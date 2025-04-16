@@ -2,6 +2,7 @@
 import os
 import json
 import logging
+import redis  # Added import for Redis
 from flask import Flask
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -90,8 +91,8 @@ def create_app():
         from app.routes import main
         app.logger.info("Successfully imported app.routes.main.")
         app.logger.info(f"Blueprint object: {main.bp}")
-        app.register_blueprint(main.bp, url_prefix="/api")
-        app.logger.info("Registered main blueprint at /api.")
+        app.register_blueprint(main.bp)  # Removed the URL prefix
+        app.logger.info("Registered main blueprint at root level.")
     except Exception as e:
         import traceback
         tb_str = traceback.format_exc()
