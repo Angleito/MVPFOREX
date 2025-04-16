@@ -107,35 +107,35 @@ class OandaClient:
             logger.error(f"Unexpected error getting account summary: {str(e)}")
             raise
 
-    def get_candles(
-        self,
-        instrument: str = "XAU_USD",
-        timeframe: str = DEFAULT_TIMEFRAME,
-        count: int = DEFAULT_COUNT
-    ) -> Dict:
-        """Fetch candlestick data for a given instrument."""
-        try:
-            params = {
-                "count": count,
-                "granularity": timeframe,
-                "price": "MBA"  # Get mid, bid, and ask prices
-            }
-            
-            request = instruments.InstrumentsCandles(
-                instrument=instrument,
-                params=params
-            )
-            
-            response = self.client.request(request)
-            logger.info(f"Successfully retrieved {len(response['candles'])} candles for {instrument}")
-            return self._format_candle_response(response)
-            
-        except V20Error as e:
-            logger.error(f"OANDA API error getting candles for {instrument}: {str(e)}")
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error getting candles for {instrument}: {str(e)}")
-            raise
+    # def get_candles(
+    #     self,
+    #     instrument: str = "XAU_USD",
+    #     timeframe: str = DEFAULT_TIMEFRAME,
+    #     count: int = DEFAULT_COUNT
+    # ) -> Dict:
+    #     """Fetch candlestick data for a given instrument."""
+    #     try:
+    #         params = {
+    #             "count": count,
+    #             "granularity": timeframe,
+    #             "price": "MBA"  # Get mid, bid, and ask prices
+    #         }
+    #         
+    #         request = instruments.InstrumentsCandles(
+    #             instrument=instrument,
+    #             params=params
+    #         )
+    #         
+    #         response = self.client.request(request)
+    #         logger.info(f"Successfully retrieved {len(response['candles'])} candles for {instrument}")
+    #         return self._format_candle_response(response)
+    #         
+    #     except V20Error as e:
+    #         logger.error(f"OANDA API error getting candles for {instrument}: {str(e)}")
+    #         raise
+    #     except Exception as e:
+    #         logger.error(f"Unexpected error getting candles for {instrument}: {str(e)}")
+    #         raise
 
     def get_current_price(self, instrument: str = "XAU_USD") -> Dict:
         """Get current price for an instrument."""
@@ -157,34 +157,34 @@ class OandaClient:
             logger.error(f"Unexpected error getting price for {instrument}: {str(e)}")
             raise
     
-    def _format_candle_response(self, response: Dict) -> Dict:
-        """Format the OANDA candle response into a more usable structure."""
-        try:
-            candles = response.get('candles', [])
-            formatted_candles = []
-            
-            for candle in candles:
-                if not candle.get('complete', False):
-                    continue  # Skip incomplete candles
-                    
-                formatted_candles.append({
-                    'time': candle['time'],
-                    'open': float(candle['mid']['o']),
-                    'high': float(candle['mid']['h']),
-                    'low': float(candle['mid']['l']),
-                    'close': float(candle['mid']['c']),
-                    'volume': int(candle['volume'])
-                })
-            
-            return {
-                'instrument': response['instrument'],
-                'granularity': response['granularity'],
-                'candles': formatted_candles
-            }
-            
-        except Exception as e:
-            logger.error(f"Error formatting candle response: {str(e)}")
-            raise
+    # def _format_candle_response(self, response: Dict) -> Dict:
+    #     """Format the OANDA candle response into a more usable structure."""
+    #     try:
+    #         candles = response.get('candles', [])
+    #         formatted_candles = []
+    #         
+    #         for candle in candles:
+    #             if not candle.get('complete', False):
+    #                 continue  # Skip incomplete candles
+    #                 
+    #             formatted_candles.append({
+    #                 'time': candle['time'],
+    #                 'open': float(candle['mid']['o']),
+    #                 'high': float(candle['mid']['h']),
+    #                 'low': float(candle['mid']['l']),
+    #                 'close': float(candle['mid']['c']),
+    #                 'volume': int(candle['volume'])
+    #             })
+    #         
+    #         return {
+    #             'instrument': response['instrument'],
+    #             'granularity': response['granularity'],
+    #             'candles': formatted_candles
+    #         }
+    #         
+    #     except Exception as e:
+    #         logger.error(f"Error formatting candle response: {str(e)}")
+    #         raise
 
 # Create singleton instance
 oanda_client = OandaClient()
