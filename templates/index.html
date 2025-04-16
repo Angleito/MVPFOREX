@@ -6,11 +6,12 @@
     <title>XAUUSD Analysis - GPT-4.1, Claude 3.7 & Perplexity Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        /* Set chart to 720x720 */
+        /* Set chart to 4000x4000 */
         #tradingview-widget-container {
-            height: 720px; /* Set height */
-            width: 720px;  /* Set fixed width */
+            height: 4000px; /* Set height */
+            width: 4000px;  /* Set fixed width */
             margin: auto; /* Center the fixed-width chart if container is wider */
+            overflow: auto; /* Add scrollbars if content overflows */
         }
     </style>
 </head>
@@ -55,28 +56,29 @@
     <script type="text/javascript">
     new TradingView.widget(
       {
-      "autosize": true,
-      "symbol": "OANDA:XAUUSD", // Specify OANDA source for XAUUSD
-      "interval": "5", // 5-minute interval
+      "autosize": false,
+      "width": 4000,
+      "height": 4000,
+      "symbol": "OANDA:XAUUSD", 
+      "interval": "15",
       "timezone": "Etc/UTC",
-      "theme": "light", // Can be "dark" or "light"
-      "style": "1", // 1 = Candles, 2 = Bars, etc.
+      "theme": "light", 
+      "style": "1", 
       "locale": "en",
       "enable_publishing": false,
       "hide_side_toolbar": false,
       "allow_symbol_change": true,
-      "container_id": "tradingview-chart" // Target the inner div
+      "container_id": "tradingview-widget-container" 
     }
       );
     </script>
     <!-- End TradingView Widget Script -->
     <script>
-    let pollingInterval = null; // To store the interval ID
-    let pollCount = 0; // To prevent infinite polling
-    const MAX_POLLS = 40; // Max times to poll (40 * 3s = 120s = 2 mins)
+    let pollingInterval = null; 
+    let pollCount = 0; 
+    const MAX_POLLS = 40; 
 
     function fetchAnalysis() {
-        // Clear previous results and stop any existing polling
         clearResults();
         if (pollingInterval) {
             clearInterval(pollingInterval);
@@ -87,26 +89,21 @@
         const resultsDiv = document.getElementById('results');
         resultsDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> <p>Starting analysis... Please wait.</p>';
 
-        // Call the new POST endpoint to start the task
-        fetch('/analyze', { method: 'POST' }) // Use POST
+        fetch('/analyze', { method: 'POST' }) 
             .then(response => {
                 if (!response.ok) {
-                    // Handle immediate errors starting the task
                     return response.json().then(err => { throw new Error(err.error || `Server error: ${response.status}`) });
                 }
-                if (response.status === 202) { // 202 Accepted means task started
+                if (response.status === 202) { 
                     return response.json();
                 } else {
-                    // Should not happen if backend returns 202 correctly
                     throw new Error('Unexpected response status from server when starting task.');
                 }
             })
             .then(data => {
                 if (data.task_id) {
-                    // Added progress bar display
                     resultsDiv.innerHTML = `<p>Analysis started (Task ID: ${data.task_id}). Waiting for results... This may take a minute.</p><div class="progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="${MAX_POLLS}" style="height: 20px;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">Polling...</div></div>`;
-                    // Start polling
-                    pollingInterval = setInterval(() => pollResults(data.task_id), 3000); // Poll every 3 seconds
+                    pollingInterval = setInterval(() => pollResults(data.task_id), 3000); 
                 } else {
                     throw new Error('Server did not return a task ID.');
                 }
@@ -121,12 +118,11 @@
         pollCount++;
         console.log(`Polling for task ${taskId}, attempt ${pollCount}`);
 
-        // Update progress bar visually
         const progressBar = document.querySelector('#results .progress-bar');
         if (progressBar) {
              const progressPercent = Math.min(100, (pollCount / MAX_POLLS) * 100);
              progressBar.style.width = `${progressPercent}%`;
-             progressBar.textContent = `Polling (${pollCount}/${MAX_POLLS})...`; // Update text
+             progressBar.textContent = `Polling (${pollCount}/${MAX_POLLS})...`; 
              progressBar.setAttribute('aria-valuenow', pollCount);
         }
 
@@ -134,7 +130,6 @@
         if (pollCount > MAX_POLLS) {
             clearInterval(pollingInterval);
             pollingInterval = null;
-            // Modify results div to show timeout message, keeping existing content if needed
             const resultsDiv = document.getElementById('results');
             const timeoutMsg = document.createElement('div');
             timeoutMsg.className = 'alert alert-warning mt-2';
@@ -148,7 +143,6 @@
         fetch(`/results/${taskId}`)
             .then(response => {
                 if (!response.ok) {
-                    // Handle errors during polling (e.g., 404 Not Found, 500 Server Error)
                      return response.json().then(err => { throw new Error(err.error || `Polling error: ${response.status}`) });
                 }
                 return response.json();
@@ -158,20 +152,17 @@
                     clearInterval(pollingInterval);
                     pollingInterval = null;
                     console.log(`Task ${taskId} completed.`);
-                    if(progressBar) progressBar.parentElement.remove(); // Remove progress bar container
-                    displayResults(data.data); // Use the existing display function
+                    if(progressBar) progressBar.parentElement.remove(); 
+                    displayResults(data.data); 
                 } else if (data.status === 'pending') {
-                    // It's still pending, do nothing, wait for next interval
                     console.log(`Task ${taskId} is still pending...`);
-                    // Progress bar updated above
                 } else if (data.status === 'error') {
                     clearInterval(pollingInterval);
                     pollingInterval = null;
                     console.error(`Task ${taskId} failed:`, data.error);
-                    if(progressBar) progressBar.parentElement.remove(); // Remove progress bar container
+                    if(progressBar) progressBar.parentElement.remove(); 
                     document.getElementById('results').innerHTML = `<div class="alert alert-danger" role="alert">Analysis failed: ${data.error || 'Unknown error'}</div>`;
                 } else {
-                     // Unexpected status
                      throw new Error(`Unknown status received: ${data.status}`);
                 }
             })
@@ -179,19 +170,17 @@
                 clearInterval(pollingInterval);
                 pollingInterval = null;
                 console.error('Error polling results:', error);
-                 if(progressBar) progressBar.parentElement.remove(); // Remove progress bar container
-                // Display error message, clearing previous potentially misleading status
+                 if(progressBar) progressBar.parentElement.remove(); 
                 document.getElementById('results').innerHTML = `<div class="alert alert-danger" role="alert">Error checking analysis results: ${error.message}</div>`;
             });
     }
 
     function displayResults(data) {
         const resultsDiv = document.getElementById('results');
-        // Ensure resultsDiv exists and clear it before adding new content
         if (!resultsDiv) return;
-        resultsDiv.innerHTML = '<h2>Analysis Results</h2>'; // Clear previous content (like progress bar message)
+        resultsDiv.innerHTML = '<h2>Analysis Results</h2>'; 
 
-        let htmlContent = ''; // Start fresh html content
+        let htmlContent = ''; 
 
         if (data && data.trend) {
              htmlContent += `<p><strong>Current Price:</strong> ${data.trend.current_price || 'N/A'}</p>`;
@@ -207,7 +196,7 @@
             const cardText = analysis ? (analysis.analysis || 'No analysis generated.') : 'Analysis not available.';
 
             htmlContent += `<div class="col-md-4 mb-3">
-                              <div class="card h-100"> <!-- Use h-100 for equal height cards -->
+                              <div class="card h-100"> 
                                 <div class="card-header">${cardHeader}</div>
                                 <div class="card-body">
                                   <p class="card-text">${cardText}</p>
@@ -216,7 +205,7 @@
                             </div>`;
         });
         htmlContent += '</div>';
-        resultsDiv.innerHTML += htmlContent; // Append the generated results HTML
+        resultsDiv.innerHTML += htmlContent; 
     }
 
     function clearResults() {
@@ -231,7 +220,6 @@
         pollCount = 0;
     }
 
-    // Attach event listener
     document.getElementById('analyzeBtn').addEventListener('click', fetchAnalysis);
 
     </script>
