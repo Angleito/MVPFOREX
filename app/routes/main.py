@@ -9,6 +9,7 @@ import uuid
 import time
 import os
 import json
+from dotenv import load_dotenv # Added missing import
 import redis
 
 # Load environment variables
