@@ -25,6 +25,36 @@ except Exception as e:
 # --- Routes ---
 from config.settings import MODELS
 
+@bp.route('/test-candles')
+def test_candles():
+    """Test endpoint to verify Supabase/Postgres candlestick DB integration."""
+    from app.db import SessionLocal
+    from app.utils.candles_db import get_candles_from_db
+    session = SessionLocal()
+    try:
+        from datetime import datetime, timedelta
+        end = datetime.utcnow()
+        start = end - timedelta(minutes=5*5)  # 5 candles of M5
+        candles = get_candles_from_db(session, 'XAU_USD', 'M5', start, end)
+        data = [
+            {
+                'instrument': c.instrument,
+                'granularity': c.granularity,
+                'timestamp': c.timestamp.isoformat(),
+                'open': c.open,
+                'high': c.high,
+                'low': c.low,
+                'close': c.close,
+                'volume': c.volume
+            }
+            for c in candles[-5:]
+        ]
+        return jsonify({'status': 'ok', 'candles': data})
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+    finally:
+        session.close()
+
 @bp.route('/')
 def index():
     """Render the main page."""
