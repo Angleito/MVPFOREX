@@ -42,10 +42,9 @@ ENV PORT 8000
 # Assuming your Flask app instance is named 'app' in 'run.py'.
 # Added --workers 1 for debugging
 
-# --- TEMPORARY DEBUGGING CMD ---
-# Try executing a simple Python print statement directly
-# This replaces the gunicorn command for testing basic container execution
-CMD ["python", "-c", "import sys; print('--- Directly executing Python in CMD ---', flush=True); sys.stdout.flush()"]
+# --- TEMPORARY DEBUGGING CMD (Commented out) ---
+# CMD ["python", "-c", "import sys; print('--- Directly executing Python in CMD ---', flush=True); sys.stdout.flush()"]
 
-# --- ORIGINAL CMD (Commented out for debugging) ---
-# CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "1", "run:app"]
+# --- ORIGINAL CMD ---
+# Run the application using Gunicorn when the container launches
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "1", "run:app"]

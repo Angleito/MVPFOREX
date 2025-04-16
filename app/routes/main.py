@@ -1,5 +1,6 @@
 """Main application routes."""
 from flask import Blueprint, render_template, jsonify, request
+from app.utils.ai_client import get_multi_model_analysis
 from app.utils.oanda_client import oanda_client
 from config.settings import MODELS
 import logging
@@ -123,9 +124,9 @@ def test_requesty():
 
 @bp.route('/analyze')
 def analyze():
-    """TEMP DEBUG: Analyze market data WITHOUT calling AI models to test timeout."""
+    """Analyze market data and generate trading recommendations from configured models."""
     try:
-        # Fetch live OANDA data (keep this part)
+        # Fetch live OANDA data
         logger.info("Fetching live OANDA data for /analyze endpoint...")
         current_price_data = oanda_client.get_current_price("XAU_USD")
         live_price = None
@@ -155,17 +156,17 @@ def analyze():
                 {"price": round(live_price * 0.992, 2), "time": "2025-04-16T09:15:00Z"}
             ]
         }
-        mock_market_data = {} # Keep market_data empty for now
+        market_data = {} # Keep market_data empty for now
 
-        # TEMP DEBUG: Construct mock analysis result instead of calling AI
-        logger.warning("TEMP DEBUG: Skipping AI analysis call.")
-        all_analyses = {
-            'claude': {'analysis': 'AI analysis skipped (debug mode)', 'model': 'claude-debug'},
-            'gpt4': {'analysis': 'AI analysis skipped (debug mode)', 'model': 'gpt4-debug'},
-            'perplexity': {'analysis': 'AI analysis skipped (debug mode)', 'model': 'perplexity-debug'}
-        }
+        # Perform multi-model AI analysis (calls only Claude due to previous change in ai_client.py)
+        logger.info("Performing multi-model AI analysis (without image)...")
+        all_analyses = get_multi_model_analysis(
+            market_data=market_data, # Keep market_data empty
+            trend_info=trend_info,
+            structure_points=mock_structure_points
+        )
 
-        logger.info("Returning mock analysis results (debug mode).")
+        logger.info("Returning analysis results.")
         return jsonify({
             'trend': trend_info,
             'structure_points': mock_structure_points,
