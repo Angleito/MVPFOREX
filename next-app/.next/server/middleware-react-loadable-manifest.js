@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{\"pages/index.js -> ../components/TradingViewWidget\":{\"id\":\"pages/index.js -> ../components/TradingViewWidget\",\"files\":[\"static/chunks/components_TradingViewWidget_js.js\"]}}"
+self.__REACT_LOADABLE_MANIFEST="{}"
