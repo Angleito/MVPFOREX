@@ -1,6 +1,5 @@
 """Main application routes."""
 from flask import Blueprint, render_template, jsonify, request
-from app.utils.ai_client import get_multi_model_analysis, get_ai_client
 from app.utils.oanda_client import oanda_client
 from config.settings import MODELS
 import logging
@@ -124,9 +123,9 @@ def test_requesty():
 
 @bp.route('/analyze')
 def analyze():
-    """Analyze market data and generate trading recommendations from all models."""
+    """TEMP DEBUG: Analyze market data WITHOUT calling AI models to test timeout."""
     try:
-        # Fetch live OANDA data
+        # Fetch live OANDA data (keep this part)
         logger.info("Fetching live OANDA data for /analyze endpoint...")
         current_price_data = oanda_client.get_current_price("XAU_USD")
         live_price = None
@@ -158,21 +157,17 @@ def analyze():
         }
         mock_market_data = {} # Keep market_data empty for now
 
-        # REMOVED chart image logic - analysis will rely on numerical data only for now
-        # Get chart image path from request if available
-        # chart_image = request.args.get('chart_image')
+        # TEMP DEBUG: Construct mock analysis result instead of calling AI
+        logger.warning("TEMP DEBUG: Skipping AI analysis call.")
+        all_analyses = {
+            'claude': {'analysis': 'AI analysis skipped (debug mode)', 'model': 'claude-debug'},
+            'gpt4': {'analysis': 'AI analysis skipped (debug mode)', 'model': 'gpt4-debug'},
+            'perplexity': {'analysis': 'AI analysis skipped (debug mode)', 'model': 'perplexity-debug'}
+        }
 
-        logger.info("Performing multi-model AI analysis (without image)...")
-        all_analyses = get_multi_model_analysis(
-            market_data=mock_market_data,
-            trend_info=trend_info, # Use updated trend_info with live price
-            structure_points=mock_structure_points # Use updated structure points
-            # chart_image_path=chart_image # REMOVED
-        )
-
-        logger.info("Returning analysis results.")
+        logger.info("Returning mock analysis results (debug mode).")
         return jsonify({
-            'trend': trend_info, # Return updated trend_info
+            'trend': trend_info,
             'structure_points': mock_structure_points,
             'analyses': all_analyses
         })
