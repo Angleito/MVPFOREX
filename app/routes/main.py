@@ -158,15 +158,16 @@ def analyze():
         }
         mock_market_data = {} # Keep market_data empty for now
 
+        # REMOVED chart image logic - analysis will rely on numerical data only for now
         # Get chart image path from request if available
-        chart_image = request.args.get('chart_image')
+        # chart_image = request.args.get('chart_image')
 
-        logger.info("Performing multi-model AI analysis...")
+        logger.info("Performing multi-model AI analysis (without image)...")
         all_analyses = get_multi_model_analysis(
             market_data=mock_market_data,
             trend_info=trend_info, # Use updated trend_info with live price
-            structure_points=mock_structure_points, # Use updated structure points
-            chart_image_path=chart_image
+            structure_points=mock_structure_points # Use updated structure points
+            # chart_image_path=chart_image # REMOVED
         )
 
         logger.info("Returning analysis results.")
