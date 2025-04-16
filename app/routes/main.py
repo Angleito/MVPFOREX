@@ -49,45 +49,47 @@ else:
 DEFAULT_TTL = 900
 
 # --- Background Task ---
-def run_analysis_background(task_id: str, market_data, trend_info, structure_points):
+def run_analysis_background(app, task_id: str, market_data, trend_info, structure_points):
     """Function to run the AI analysis in a background thread and update Redis."""
-    # Access Flask app context if needed (e.g., for logging)
-    # Requires app context setup if run outside request lifecycle
-    logger = current_app.logger if current_app else print # Fallback logger
+    # Use the passed app object to create an app context
+    with app.app_context():
+        # Now safe to use current_app and logger
+        logger = current_app.logger
 
-    if not redis_client:
-        logger(f"Redis client not available for task {task_id}. Aborting.")
-        return # Cannot proceed without Redis
+        if not redis_client:
+            logger.error(f"Redis client not available for task {task_id}. Aborting.")
+            return # Cannot proceed without Redis
 
-    logger(f"Background task {task_id} started.")
-    try:
-        # This still calls the function that currently only runs Claude
-        analysis_data = get_multi_model_analysis(
-            market_data=market_data,
-            trend_info=trend_info,
-            structure_points=structure_points
-        )
-        logger(f"Background task {task_id}: AI analysis completed.")
-        # 3. Store completed result in Redis
-        result_data = {
-            "status": "completed",
-            "data": analysis_data
-        }
-        redis_client.set(task_id, json.dumps(result_data), ex=DEFAULT_TTL)
-        logger(f"Task {task_id} completed successfully. Result stored in Redis.")
-
-    except Exception as e:
-        logger(f"Error in background task {task_id}: {e}", exc_info=True)
-        # Store error status in Redis
-        error_data = {
-            "status": "error",
-            "error": str(e)
-        }
+        logger.info(f"Background task {task_id} started.")
         try:
-             redis_client.set(task_id, json.dumps(error_data), ex=DEFAULT_TTL)
-             logger(f"Task {task_id} failed. Error status stored in Redis.")
-        except Exception as redis_err:
-             logger(f"Failed to store error status in Redis for task {task_id}: {redis_err}")
+            # --- Analysis Logic Starts Here ---
+            logger.debug(f"Task {task_id}: Starting AI analysis within app context.") # Example log
+            analysis_data = get_multi_model_analysis(
+                market_data=market_data,
+                trend_info=trend_info,
+                structure_points=structure_points
+            )
+            logger.info(f"Background task {task_id}: AI analysis completed.")
+            # --- Store result in Redis ---
+            result_data = {
+                "status": "completed",
+                "data": analysis_data
+            }
+            redis_client.set(task_id, json.dumps(result_data), ex=DEFAULT_TTL)
+            logger.info(f"Task {task_id} completed successfully. Result stored in Redis.")
+
+        except Exception as e:
+            logger.error(f"Error in background task {task_id}: {e}", exc_info=True)
+            # --- Store error in Redis ---
+            error_data = {
+                "status": "error",
+                "error": str(e)
+            }
+            try:
+                 redis_client.set(task_id, json.dumps(error_data), ex=DEFAULT_TTL)
+                 logger.info(f"Task {task_id} failed. Error status stored in Redis.")
+            except Exception as redis_err:
+                 logger.error(f"Failed to store error status in Redis for task {task_id}: {redis_err}")
 
 
 # --- Routes ---
@@ -124,7 +126,7 @@ def test_requesty():
             'error': str(e)
         }), 500
 
-@bp.route('/analyze', methods=['POST']) 
+@bp.route('/analyze', methods=['POST'])
 def start_analysis_task():
     """Starts the AI analysis in a background thread and returns a task ID."""
     if not redis_client:
@@ -136,18 +138,20 @@ def start_analysis_task():
     current_app.logger.info(f"Received analysis request. Generated Task ID: {task_id}")
 
     # --- Get necessary data (similar to before) ---
-    logger.info("Received request to start analysis task.")
+    current_app.logger.info("Fetching data for analysis task.")
     # Fetch live OANDA data
     current_price_data = oanda_client.get_current_price("XAU_USD")
     live_price = None
     if current_price_data and 'prices' in current_price_data and current_price_data['prices']:
         live_price = float(current_price_data['prices'][0]['asks'][0]['price'])
-    else: live_price = 2300.00 # Fallback
-    logger.info(f"Using live price: {live_price}")
+    else:
+        live_price = 2300.00 # Fallback
+        current_app.logger.warning("Failed to fetch live price from OANDA, using fallback.")
+    current_app.logger.info(f"Using live price: {live_price}")
 
     trend_info = {"direction": "N/A", "strength": "N/A", "current_price": live_price}
     mock_structure_points = {"swing_highs": [], "swing_lows": []} # Keep simple for now
-    market_data = {}
+    market_data = {} # Placeholder for potential future use
     # --- End Data Fetch ---
 
     # Set initial status in Redis *before* starting thread
@@ -159,13 +163,18 @@ def start_analysis_task():
         current_app.logger.error(f"Failed to set initial status in Redis for task {task_id}: {e}")
         return jsonify({"error": "Failed to initialize task status."}), 500
 
-    # Start the background thread
+    # Get a reference to the current app instance *before* starting the thread
+    app_instance = current_app._get_current_object()
+
+    # Start the background thread, passing the app instance
     thread = threading.Thread(
         target=run_analysis_background,
-        args=(task_id, market_data, trend_info, mock_structure_points)
+        # Pass app_instance as the first argument
+        args=(app_instance, task_id, market_data, trend_info, mock_structure_points)
     )
-    thread.daemon = True  # Allow app to exit even if threads are running
+    thread.daemon = True
     thread.start()
+    current_app.logger.info(f"Background thread started for task {task_id}.") # Added log
 
     return jsonify({"task_id": task_id}), 202 # Accepted
 
