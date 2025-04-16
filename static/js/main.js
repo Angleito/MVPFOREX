@@ -1,4 +1,6 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', (event) => {
+    console.log("DOM fully loaded and parsed");
+
     const analyzeBtn = document.getElementById('analyze-btn');
     const loadingDiv = document.getElementById('loading');
     const resultsDiv = document.getElementById('results');

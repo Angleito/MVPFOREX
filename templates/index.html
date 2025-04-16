@@ -74,27 +74,27 @@
     </script>
     <!-- End TradingView Widget Script -->
     <script>
-    let pollingInterval = null; 
-    let pollCount = 0; 
-    const MAX_POLLS = 40; 
+    let pollingInterval = null; // To store the interval ID
+    let pollCount = 0; // To prevent infinite polling
+    const MAX_POLLS = 40; // Max times to poll (40 * 3s = 120s = 2 mins)
 
     function fetchAnalysis() {
+        // **Crucial:** Stop any previous polling and clear results completely
         clearResults();
-        if (pollingInterval) {
-            clearInterval(pollingInterval);
-            pollingInterval = null;
-        }
-        pollCount = 0;
 
         const resultsDiv = document.getElementById('results');
-        resultsDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> <p>Starting analysis... Please wait.</p>';
+        const analyzeBtn = document.getElementById('analyzeBtn');
 
-        fetch('/analyze', { method: 'POST' }) 
+        // Disable button and show loading state
+        if (analyzeBtn) analyzeBtn.disabled = true;
+        resultsDiv.innerHTML = '<div class="d-flex justify-content-center align-items-center" style="min-height: 100px;"><div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"><span class="visually-hidden">Loading...</span></div><p class="ms-3 mb-0">Starting analysis...</p></div>';
+
+        fetch('/analyze', { method: 'POST' })
             .then(response => {
                 if (!response.ok) {
                     return response.json().then(err => { throw new Error(err.error || `Server error: ${response.status}`) });
                 }
-                if (response.status === 202) { 
+                if (response.status === 202) {
                     return response.json();
                 } else {
                     throw new Error('Unexpected response status from server when starting task.');
@@ -102,8 +102,10 @@
             })
             .then(data => {
                 if (data.task_id) {
-                    resultsDiv.innerHTML = `<p>Analysis started (Task ID: ${data.task_id}). Waiting for results... This may take a minute.</p><div class="progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="${MAX_POLLS}" style="height: 20px;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">Polling...</div></div>`;
-                    pollingInterval = setInterval(() => pollResults(data.task_id), 3000); 
+                    // Update loading message and add progress bar
+                    resultsDiv.innerHTML = `<div class="text-center"><p>Analysis started (Task ID: ${data.task_id}). Polling for results...</p><div class="progress" role="progressbar" aria-label="Analysis progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="${MAX_POLLS}" style="height: 20px; max-width: 500px; margin: 10px auto;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div></div></div>`;
+                    pollCount = 0; // Reset poll count for the new task
+                    pollingInterval = setInterval(() => pollResults(data.task_id), 3000);
                 } else {
                     throw new Error('Server did not return a task ID.');
                 }
@@ -111,6 +113,7 @@
             .catch(error => {
                 console.error('Error starting analysis:', error);
                 resultsDiv.innerHTML = `<div class="alert alert-danger" role="alert">Error starting analysis: ${error.message}</div>`;
+                 if (analyzeBtn) analyzeBtn.disabled = false; // Re-enable button on error
             });
     }
 
@@ -118,24 +121,23 @@
         pollCount++;
         console.log(`Polling for task ${taskId}, attempt ${pollCount}`);
 
-        const progressBar = document.querySelector('#results .progress-bar');
-        if (progressBar) {
-             const progressPercent = Math.min(100, (pollCount / MAX_POLLS) * 100);
-             progressBar.style.width = `${progressPercent}%`;
-             progressBar.textContent = `Polling (${pollCount}/${MAX_POLLS})...`; 
-             progressBar.setAttribute('aria-valuenow', pollCount);
+        const progressBarDiv = document.querySelector('#results .progress-bar');
+        if (progressBarDiv) {
+             const progressPercent = Math.min(100, Math.round((pollCount / MAX_POLLS) * 100));
+             progressBarDiv.style.width = `${progressPercent}%`;
+             progressBarDiv.textContent = `${progressPercent}%`;
+             progressBarDiv.setAttribute('aria-valuenow', pollCount);
         }
-
 
         if (pollCount > MAX_POLLS) {
             clearInterval(pollingInterval);
             pollingInterval = null;
             const resultsDiv = document.getElementById('results');
-            const timeoutMsg = document.createElement('div');
-            timeoutMsg.className = 'alert alert-warning mt-2';
-            timeoutMsg.role = 'alert';
-            timeoutMsg.textContent = `Analysis timed out after ${MAX_POLLS} checks. The server might still be processing.`;
-            if(resultsDiv) resultsDiv.appendChild(timeoutMsg);
+            // Keep the progress bar visible but add a timeout message
+            if (resultsDiv) {
+                 resultsDiv.innerHTML += `<div class="alert alert-warning mt-2 text-center" role="alert">Polling timed out after ${MAX_POLLS} checks. Server might still be processing.</div>`;
+            }
+            if (document.getElementById('analyzeBtn')) document.getElementById('analyzeBtn').disabled = false; // Re-enable button
             console.warn(`Stopped polling for task ${taskId} after ${MAX_POLLS} attempts.`);
             return;
         }
@@ -152,16 +154,17 @@
                     clearInterval(pollingInterval);
                     pollingInterval = null;
                     console.log(`Task ${taskId} completed.`);
-                    if(progressBar) progressBar.parentElement.remove(); 
-                    displayResults(data.data); 
+                    displayResults(data.data); // Display the actual results
+                    if (document.getElementById('analyzeBtn')) document.getElementById('analyzeBtn').disabled = false; // Re-enable button
                 } else if (data.status === 'pending') {
                     console.log(`Task ${taskId} is still pending...`);
+                    // Continue polling...
                 } else if (data.status === 'error') {
                     clearInterval(pollingInterval);
                     pollingInterval = null;
                     console.error(`Task ${taskId} failed:`, data.error);
-                    if(progressBar) progressBar.parentElement.remove(); 
-                    document.getElementById('results').innerHTML = `<div class="alert alert-danger" role="alert">Analysis failed: ${data.error || 'Unknown error'}</div>`;
+                    document.getElementById('results').innerHTML = `<div class="alert alert-danger text-center" role="alert">Analysis failed: ${data.error || 'Unknown error'}</div>`;
+                    if (document.getElementById('analyzeBtn')) document.getElementById('analyzeBtn').disabled = false; // Re-enable button
                 } else {
                      throw new Error(`Unknown status received: ${data.status}`);
                 }
@@ -170,59 +173,84 @@
                 clearInterval(pollingInterval);
                 pollingInterval = null;
                 console.error('Error polling results:', error);
-                 if(progressBar) progressBar.parentElement.remove(); 
-                document.getElementById('results').innerHTML = `<div class="alert alert-danger" role="alert">Error checking analysis results: ${error.message}</div>`;
+                document.getElementById('results').innerHTML = `<div class="alert alert-danger text-center" role="alert">Error checking results: ${error.message}</div>`;
+                 if (document.getElementById('analyzeBtn')) document.getElementById('analyzeBtn').disabled = false; // Re-enable button
             });
     }
 
     function displayResults(data) {
         const resultsDiv = document.getElementById('results');
         if (!resultsDiv) return;
-        resultsDiv.innerHTML = '<h2>Analysis Results</h2>'; 
+        // **Crucial: Clear previous content (loading indicators) before adding results**
+        resultsDiv.innerHTML = '<h2>Analysis Results</h2>';
 
-        let htmlContent = ''; 
+        let htmlContent = '';
 
-        if (data && data.trend) {
-             htmlContent += `<p><strong>Current Price:</strong> ${data.trend.current_price || 'N/A'}</p>`;
+        if (data && data.trend && data.trend.current_price) {
+             htmlContent += `<p class="text-center"><strong>Current Price:</strong> ${data.trend.current_price}</p>`;
         } else {
-             htmlContent += `<p>Trend information not available.</p>`;
+             htmlContent += `<p class="text-center">Price information not available.</p>`;
         }
 
         htmlContent += '<div class="row">';
-        const models = ['claude', 'gpt4', 'perplexity'];
-        models.forEach(modelKey => {
-            const analysis = (data && data.analyses) ? data.analyses[modelKey] : null;
-            const cardHeader = analysis ? (analysis.model || modelKey.charAt(0).toUpperCase() + modelKey.slice(1)) : modelKey.charAt(0).toUpperCase() + modelKey.slice(1);
-            const cardText = analysis ? (analysis.analysis || 'No analysis generated.') : 'Analysis not available.';
+        // Use the actual keys from the response if available, otherwise default
+        const modelsToDisplay = data && data.analyses ? Object.keys(data.analyses) : ['claude']; // Default or show what's available
+
+        modelsToDisplay.forEach(modelKey => {
+             const analysis = data.analyses[modelKey];
+             // Handle cases where analysis might be missing or incomplete
+             const cardHeader = analysis && analysis.model ? analysis.model : modelKey.charAt(0).toUpperCase() + modelKey.slice(1);
+             const cardText = analysis && analysis.analysis ? analysis.analysis : 'Analysis not available for this model.';
 
             htmlContent += `<div class="col-md-4 mb-3">
-                              <div class="card h-100"> 
+                              <div class="card h-100">
                                 <div class="card-header">${cardHeader}</div>
                                 <div class="card-body">
-                                  <p class="card-text">${cardText}</p>
+                                  <p class="card-text">${cardText.replace(/\n/g, '<br>')}</p> <!-- Replace newlines with <br> for HTML display -->
                                 </div>
                               </div>
                             </div>`;
         });
+
+        // Add a fallback if no analyses were found at all
+        if (modelsToDisplay.length === 0) {
+            htmlContent += '<div class="col-12"><p class="text-center text-muted">No analysis data was returned from the server.</p></div>';
+        }
+
         htmlContent += '</div>';
-        resultsDiv.innerHTML += htmlContent; 
+        resultsDiv.innerHTML += htmlContent; // Append the results cards
     }
 
     function clearResults() {
-        const resultsDiv = document.getElementById('results');
-        if (resultsDiv) {
-            resultsDiv.innerHTML = '';
-        }
-         if (pollingInterval) {
+        // **Crucial: Stop any running interval timer**
+        if (pollingInterval) {
             clearInterval(pollingInterval);
             pollingInterval = null;
+            console.log("Cleared previous polling interval.");
         }
-        pollCount = 0;
+        pollCount = 0; // Reset counter
+
+        const resultsDiv = document.getElementById('results');
+        if (resultsDiv) {
+            resultsDiv.innerHTML = ''; // Clear the display area
+        }
+        // Re-enable button if it was disabled
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        if (analyzeBtn) analyzeBtn.disabled = false;
+
     }
 
-    document.getElementById('analyzeBtn').addEventListener('click', fetchAnalysis);
+    // Attach event listener *after* the DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        if (analyzeBtn) {
+            analyzeBtn.addEventListener('click', fetchAnalysis);
+        } else {
+            console.error("Analyze button not found!");
+        }
+    });
 
     </script>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <!-- <script src="{{ url_for('static', filename='js/main.js') }}"></script> --> <!-- Temporarily commented out if not needed -->
 </body>
 </html>
