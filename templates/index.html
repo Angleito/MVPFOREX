@@ -38,12 +38,6 @@
             <div id="tradingview-chart"></div>
         </div>
         
-        <div class="row mb-4">
-            <div class="col text-center">
-                <button id="analyzeBtn" class="btn btn-primary btn-lg">Analyze Current Market</button>
-            </div>
-        </div>
-
         <div id="loading" class="loading-overlay">
             <div class="text-center">
                 <div class="spinner-border text-primary" role="status">
@@ -139,42 +133,6 @@
                 if (btn) btn.disabled = false;
             }
         }
-            try {
-                clearResults();
-                showLoading();
-
-                const response = await fetch('/analyze', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Server error: ${response.status}`);
-                }
-
-                const data = await response.json();
-                
-                if (data.status === 'completed' && data.data) {
-                    displayResults(data.data);
-                } else if (data.status === 'error') {
-                    throw new Error(data.error || 'Analysis failed');
-                } else {
-                    throw new Error('Invalid response from server');
-                }
-            } catch (error) {
-                console.error('Error in analysis:', error);
-                resultsDiv.innerHTML = `
-                    <div class="alert alert-danger" role="alert">
-                        Error in analysis: ${error.message}
-                    </div>
-                `;
-                resultsDiv.classList.remove('d-none');
-            } finally {
-                hideLoading();
-            }
-        }
 
         function displayResults(data, model) {
             resultsDiv.innerHTML = '<h2 class="text-center mb-4">Analysis Result</h2>';
@@ -211,63 +169,7 @@
             }
             resultsDiv.classList.remove('d-none');
         }
-            resultsDiv.innerHTML = '<h2 class="text-center mb-4">Analysis Results</h2>';
-            
-            if (data && Object.keys(data).length > 0) {
-                const resultsContent = document.createElement('div');
-                resultsContent.className = 'row';
-
-                // Display each model's analysis
-                for (const [model, analysisData] of Object.entries(data)) {
-                    const card = document.createElement('div');
-                    card.className = 'col-md-4 mb-4';
-                    
-                    let cardContent;
-                    if (analysisData.error) {
-                        cardContent = `
-                            <div class="card h-100">
-                                <div class="card-header">
-                                    <h5 class="card-title mb-0">${model.toUpperCase()}</h5>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text text-danger">${analysisData.error}</p>
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        const analysisText = analysisData.analysis || 'No analysis available';
-                        cardContent = `
-                            <div class="card h-100">
-                                <div class="card-header">
-                                    <h5 class="card-title mb-0">${model.toUpperCase()}</h5>
-                                    <small class="text-muted">${analysisData.model || ''}</small>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">${analysisText.replace(/\n/g, '<br>')}</p>
-                                </div>
-                            </div>
-                        `;
-                    }
-                    
-                    card.innerHTML = cardContent;
-                    resultsContent.appendChild(card);
-                }
-
-                resultsDiv.appendChild(resultsContent);
-            } else {
-                resultsDiv.innerHTML += `
-                    <div class="alert alert-warning text-center" role="alert">
-                        No analysis data available
-                    </div>
-                `;
-            }
-            
-            resultsDiv.classList.remove('d-none');
-        }
-
-        if (analyzeBtn) {
-            analyzeBtn.addEventListener('click', fetchAnalysis);
-        }
+        // End of displayResults function
     });
     </script>
 </body>
