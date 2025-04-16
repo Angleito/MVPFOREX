@@ -1,9 +1,9 @@
 """Flask application factory."""
 import os
-
-import logging
 import json
+import logging
 from flask import Flask
+from flask_cors import CORS
 from dotenv import load_dotenv
 from config.settings import DEBUG, SECRET_KEY
 
@@ -15,6 +15,8 @@ def create_app():
     app = Flask(__name__, 
                 template_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates'),
                 static_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static'))
+    
+    CORS(app)  # Enable CORS for all routes
     
     # Load configuration
     app.config['DEBUG'] = DEBUG
@@ -86,10 +88,15 @@ def create_app():
     # Register blueprints
     try:
         from app.routes import main
-        app.register_blueprint(main.bp)
-        app.logger.info("Registered main blueprint.")
+        app.logger.info("Successfully imported app.routes.main.")
+        app.logger.info(f"Blueprint object: {main.bp}")
+        app.register_blueprint(main.bp, url_prefix="/api")
+        app.logger.info("Registered main blueprint at /api.")
     except Exception as e:
-        app.logger.error(f"Error registering blueprints: {e}", exc_info=True)
+        import traceback
+        tb_str = traceback.format_exc()
+        app.logger.error(f"Error registering blueprints: {e}\nTraceback:\n{tb_str}", exc_info=True)
+        print(f"Error registering blueprints: {e}\nTraceback:\n{tb_str}")
 
     app.logger.info("Flask application instance creation complete.")
     return app

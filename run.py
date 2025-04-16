@@ -17,7 +17,15 @@ if __name__ == '__main__':
     # This part is mainly for local development, Gunicorn runs the 'app' object directly
     print("--- Running locally via __main__ ---", flush=True)
     sys.stdout.flush()
-    app.run(debug=True)
+    # Parse --port and --host from sys.argv
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=5000, help='Port to run the Flask app on')
+    parser.add_argument('--host', type=str, default='127.0.0.1', help='Host to run the Flask app on')
+    args, _ = parser.parse_known_args()
+    print(f"--- Starting Flask on {args.host}:{args.port} ---", flush=True)
+    sys.stdout.flush()
+    app.run(debug=True, port=args.port, host=args.host)
 else:
     # Log when Gunicorn imports the 'app' object
     print("--- Gunicorn importing 'app' object ---", flush=True)

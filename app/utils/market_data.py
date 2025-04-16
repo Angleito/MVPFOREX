@@ -4,12 +4,12 @@ Utility functions for fetching and processing market data from OANDA.
 
 from datetime import datetime, timedelta
 from app.db import SessionLocal
-from app.utils.candles_db import get_candles_from_db, save_candles_to_db
+from app.utils.candles_db import get_candles_from_db
 from app.models import Candlestick
 
-def get_latest_market_data(oanda_client, instrument, granularity, count):
+def get_latest_market_data(_oanda_client_unused, instrument, granularity, count):
     """
-    Fetch candlestick data from Supabase (Postgres). If missing, fetch from OANDA, store, and return.
+    Fetch candlestick data from Supabase (Postgres) only. If missing, return an empty list.
     """
     session = SessionLocal()
     try:
@@ -22,7 +22,7 @@ def get_latest_market_data(oanda_client, instrument, granularity, count):
 
         # 1. Try DB first
         candles = get_candles_from_db(session, instrument, granularity, start, end)
-        if len(candles) >= count:
+        if candles and len(candles) >= count:
             data = [
                 {
                     'instrument': c.instrument,
@@ -43,26 +43,8 @@ def get_latest_market_data(oanda_client, instrument, granularity, count):
                 'trend_info': trend_info,
                 'structure_points': structure_points
             }
-        # 2. Fetch from OANDA if not enough candles
-        oanda_candles = oanda_client.get_candles(instrument, granularity, count)
-        # Convert to DB objects
-        new_candles = []
-        for c in oanda_candles['candles']:
-            if not c['complete']:
-                continue
-            new_candles.append(Candlestick(
-                instrument=instrument,
-                granularity=granularity,
-                timestamp=datetime.fromisoformat(c['time'].replace('Z', '+00:00')),
-                open=float(c['mid']['o']),
-                high=float(c['mid']['h']),
-                low=float(c['mid']['l']),
-                close=float(c['mid']['c']),
-                volume=float(c['volume'])
-            ))
-        save_candles_to_db(session, new_candles)
-        # Return the latest candles
-        return get_latest_market_data(oanda_client, instrument, granularity, count)
+        # No fallback: Just return what we have (may be empty)
+        return []
     except Exception as e:
         return {'error': str(e)}
     finally:
