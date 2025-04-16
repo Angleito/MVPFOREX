@@ -118,10 +118,16 @@ def get_multi_model_analysis(
     structure_points,
     chart_image_path: Optional[str] = None
 ):
-    """Generate analysis from all three models and return combined results."""
+    """Generate analysis from ONLY Claude model (TEMP FIX for timeout) and return results."""
     results = {}
     
-    for model_type in MODELS.keys():
+    # TEMP FIX: Only call Claude to avoid Vercel timeout
+    models_to_run = ['claude'] 
+    # Original: for model_type in MODELS.keys():
+    for model_type in models_to_run: 
+        if model_type not in MODELS: # Safety check
+             results[model_type] = {'error': f'Model type {model_type} not configured', 'model': 'unknown'}
+             continue
         try:
             analysis = generate_analysis(
                 market_data,
@@ -135,9 +141,15 @@ def get_multi_model_analysis(
                 'model': MODELS[model_type]['id']
             }
         except Exception as e:
+            logger.error(f"Error generating analysis for {model_type}: {str(e)}", exc_info=True)
             results[model_type] = {
                 'error': str(e),
                 'model': MODELS[model_type]['id']
             }
     
+    # Fill in placeholders for other models if needed by frontend structure
+    for m_type in MODELS.keys():
+        if m_type not in results:
+            results[m_type] = {'error': 'Analysis not run (timeout optimization)', 'model': MODELS[m_type]['id']}
+
     return results
