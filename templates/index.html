@@ -53,6 +53,14 @@
             </div>
         </div>
 
+        <div id="model-buttons" class="mb-4 text-center">
+            {% set model_labels = {'gpt4': 'GPT-4', 'claude': 'Claude', 'perplexity': 'Perplexity'} %}
+            {% for model in config['MODELS'].keys() %}
+                <button class="btn btn-primary mx-2 mb-2" id="analyzeBtn_{{model}}" onclick="fetchAnalysis('{{model}}')">
+                    Analyze with {{ model_labels.get(model, model|capitalize) }}
+                </button>
+            {% endfor %}
+        </div>
         <div id="results" class="d-none">
             <!-- Results will be populated by JavaScript -->
         </div>
@@ -101,7 +109,36 @@
             resultsDiv.classList.add('d-none');
         }
 
-        async function fetchAnalysis() {
+        async function fetchAnalysis(model) {
+            // Disable the button for this model
+            const btn = document.getElementById(`analyzeBtn_${model}`);
+            if (btn) btn.disabled = true;
+            showLoading();
+            clearResults();
+            try {
+                const response = await fetch(`/analyze?model=${model}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                const data = await response.json();
+                if (data.status === 'completed' && data.data) {
+                    displayResults(data.data, model);
+                } else if (data.status === 'error') {
+                    throw new Error(data.error || 'Analysis failed');
+                } else {
+                    throw new Error('Invalid response from server');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-danger" role="alert">Error in analysis: ${error.message}</div>`;
+                resultsDiv.classList.remove('d-none');
+            } finally {
+                hideLoading();
+                if (btn) btn.disabled = false;
+            }
+        }
             try {
                 clearResults();
                 showLoading();
@@ -139,7 +176,41 @@
             }
         }
 
-        function displayResults(data) {
+        function displayResults(data, model) {
+            resultsDiv.innerHTML = '<h2 class="text-center mb-4">Analysis Result</h2>';
+            if (data && data[model]) {
+                const modelResult = data[model];
+                let cardContent;
+                if (modelResult.error) {
+                    cardContent = `
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">${model.toUpperCase()}</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text text-danger">${modelResult.error}</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    cardContent = `
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">${model.toUpperCase()}</h5>
+                                <small class="text-muted">${modelResult.model || ''}</small>
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text">${(modelResult.analysis || 'No analysis available').replace(/\n/g, '<br>')}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+                resultsDiv.innerHTML += cardContent;
+            } else {
+                resultsDiv.innerHTML += `<div class="alert alert-warning text-center" role="alert">No analysis data available</div>`;
+            }
+            resultsDiv.classList.remove('d-none');
+        }
             resultsDiv.innerHTML = '<h2 class="text-center mb-4">Analysis Results</h2>';
             
             if (data && Object.keys(data).length > 0) {
