@@ -40,4 +40,5 @@ ENV PORT 8000
 # Bind to 0.0.0.0 to be accessible from outside the container.
 # Use the PORT environment variable set by Vercel (or the default 8000).
 # Assuming your Flask app instance is named 'app' in 'run.py'.
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "run:app"]
+# Added --workers 1 for debugging
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "1", "run:app"]
