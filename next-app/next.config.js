@@ -6,7 +6,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: '/api/:path*', // Let Vercel handle /api/ with Python
+        destination: 'http://localhost:5000/api/:path*', // Proxy to Flask backend in dev
       },
     ];
   },

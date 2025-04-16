@@ -6,16 +6,23 @@ export default function Home() {
 
   useEffect(() => {
     fetch('/api/test-candles')
-      .then(res => res.json())
-      .then(data => setCandles(data.candles))
-      .catch(err => setError(err.toString()));
+      .then(async res => {
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          setCandles(data.candles);
+        } catch (e) {
+          setError('API did not return JSON. Raw response: ' + text.slice(0, 200));
+        }
+      })
+      .catch(err => setError('Fetch failed: ' + err.toString()));
   }, []);
 
   return (
     <main style={{ padding: 32, fontFamily: 'sans-serif' }}>
       <h1>MVPFOREX Next.js Frontend</h1>
       <p>This page fetches candlestick data from your Flask API at <code>/api/test-candles</code>.</p>
-      {error && <div style={{ color: 'red' }}>Error: {error}</div>}
+      {error && <div style={{ color: 'red' }}>Error: {error.includes('storage') ? 'Browser storage is not available in this context. Some widgets may not work.' : error}</div>}
       {candles ? (
         <table border="1" cellPadding="6" style={{ marginTop: 16 }}>
           <thead>
