@@ -1,6 +1,6 @@
 """Flask application factory."""
 import os
-import redis
+
 import logging
 import json
 from flask import Flask
@@ -82,11 +82,6 @@ def create_app():
         app.logger.warning(f"{redis_url_env_var_name} environment variable not set or empty. Vercel KV integration disabled.")
         app.redis_client = None # Set to None if URL not found
 
-    # Ensure app.redis_client exists, even if None
-    if not hasattr(app, 'redis_client'):
-         app.logger.warning("Attribute 'redis_client' was not set, setting to None.")
-         app.redis_client = None
-    # --- End Redis Init ---
 
     # Register blueprints
     try:
