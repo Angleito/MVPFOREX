@@ -84,136 +84,191 @@
         const analyzeBtn = document.getElementById('analyzeBtn');
         const loadingOverlay = document.getElementById('loading');
         const resultsDiv = document.getElementById('results');
-        let pollingInterval = null;
-        let pollCount = 0;
-        const MAX_POLLS = 40;
+        let pollingInterval = null; 
+        let pollCount = 0; 
+        const MAX_POLLS = 40; 
+        const POLLING_DELAY_MS = 3000; 
 
-        function showLoading() {
+        function showLoading(message = "Analyzing market conditions...") {
+            const loadingText = loadingOverlay.querySelector('p');
+            if (loadingText) loadingText.textContent = message;
             loadingOverlay.style.display = 'flex';
-            analyzeBtn.disabled = true;
-            resultsDiv.classList.add('d-none');
+            if (analyzeBtn) analyzeBtn.disabled = true;
+            resultsDiv.classList.add('d-none'); 
         }
 
         function hideLoading() {
             loadingOverlay.style.display = 'none';
-            analyzeBtn.disabled = false;
+            if (analyzeBtn) analyzeBtn.disabled = false; 
         }
 
-        function clearResults() {
+        function clearPolling() {
             if (pollingInterval) {
                 clearInterval(pollingInterval);
                 pollingInterval = null;
+                console.log("Polling stopped.");
             }
             pollCount = 0;
+        }
+
+        function clearResults() {
+            clearPolling();
             resultsDiv.innerHTML = '';
             resultsDiv.classList.add('d-none');
         }
 
         async function fetchAnalysis() {
             try {
-                clearResults();
-                showLoading();
+                clearResults(); 
+                showLoading("Starting analysis..."); 
 
                 const response = await fetch('/analyze', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    headers: { 'Content-Type': 'application/json' }
                 });
 
-                if (!response.ok) {
-                    throw new Error(`Server error: ${response.status}`);
+                if (response.status === 503) {
+                     const errData = await response.json();
+                     throw new Error(errData.error || 'Analysis backend service is unavailable.');
+                }
+                 if (!response.ok || response.status !== 202) {
+                    const errText = await response.text();
+                    throw new Error(`Server error when starting task: ${response.status} - ${errText}`);
                 }
 
                 const data = await response.json();
-                
                 if (data.task_id) {
-                    pollResults(data.task_id);
+                    showLoading(`Analysis started (Task ID: ${data.task_id}). Waiting for results...`);
+                    pollingInterval = setInterval(() => pollResults(data.task_id), POLLING_DELAY_MS);
+                    pollResults(data.task_id); 
                 } else {
-                    throw new Error('No task ID received');
+                    throw new Error('No task ID received from server.');
                 }
             } catch (error) {
                 console.error('Error starting analysis:', error);
-                resultsDiv.innerHTML = `
-                    <div class="alert alert-danger" role="alert">
-                        Error starting analysis: ${error.message}
-                    </div>
-                `;
+                resultsDiv.innerHTML = `<div class="alert alert-danger" role="alert">Error starting analysis: ${error.message}</div>`;
                 resultsDiv.classList.remove('d-none');
-                hideLoading();
+                hideLoading(); 
             }
         }
 
         async function pollResults(taskId) {
+            pollCount++;
+            console.log(`Polling for task ${taskId}, attempt ${pollCount}`);
+
+            showLoading(`Checking analysis status... (Attempt ${pollCount}/${MAX_POLLS})`);
+
+            if (pollCount > MAX_POLLS) {
+                clearPolling(); 
+                resultsDiv.innerHTML = `<div class="alert alert-warning mt-2 text-center" role="alert">Polling timed out after ${MAX_POLLS} checks. Server might still be processing or the task failed.</div>`;
+                resultsDiv.classList.remove('d-none');
+                hideLoading(); 
+                console.warn(`Stopped polling for task ${taskId} after ${MAX_POLLS} attempts.`);
+                return;
+            }
+
             try {
                 const response = await fetch(`/results/${taskId}`);
-                if (!response.ok) {
-                    throw new Error(`Polling error: ${response.status}`);
+
+                if (response.status === 404) {
+                     const errData = await response.json();
+                     throw new Error(errData.error || 'Task ID not found or expired.');
+                }
+                 if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Polling error: ${response.status} - ${errText}`);
                 }
 
                 const data = await response.json();
-                
+
                 if (data.status === 'completed') {
+                    clearPolling(); 
                     displayResults(data.data);
-                    hideLoading();
+                    hideLoading(); 
+                    console.log(`Task ${taskId} completed.`);
+                } else if (data.status === 'pending') {
+                    console.log(`Task ${taskId} is still pending...`);
                 } else if (data.status === 'error') {
-                    throw new Error(data.error || 'Analysis failed');
-                } else if (pollCount < MAX_POLLS) {
-                    pollCount++;
-                    setTimeout(() => pollResults(taskId), 3000);
+                    clearPolling(); 
+                    console.error(`Task ${taskId} failed:`, data.error);
+                    throw new Error(data.error || 'Analysis failed on the server.');
+                } else if (data.status === 'not_found') { 
+                     clearPolling();
+                     throw new Error(data.error || 'Task ID not found or expired.');
                 } else {
-                    throw new Error('Analysis timed out');
+                     clearPolling();
+                     throw new Error(`Unknown status received from server: ${data.status}`);
                 }
             } catch (error) {
+                clearPolling(); 
                 console.error('Error polling results:', error);
-                resultsDiv.innerHTML = `
-                    <div class="alert alert-danger" role="alert">
-                        ${error.message}
-                    </div>
-                `;
+                resultsDiv.innerHTML = `<div class="alert alert-danger" role="alert">Error checking results: ${error.message}</div>`;
                 resultsDiv.classList.remove('d-none');
-                hideLoading();
+                hideLoading(); 
             }
         }
 
-        function displayResults(data) {
+        function displayResults(analysisData) { 
             resultsDiv.innerHTML = '<h2 class="text-center mb-4">Analysis Results</h2>';
-            
-            if (data && Object.keys(data).length > 0) {
+
+            if (analysisData && typeof analysisData === 'object' && Object.keys(analysisData).length > 0) {
                 const resultsContent = document.createElement('div');
                 resultsContent.className = 'row';
 
-                // Display each model's analysis
-                for (const [model, analysis] of Object.entries(data)) {
+                for (const [model, modelResult] of Object.entries(analysisData)) {
                     const card = document.createElement('div');
-                    card.className = 'col-md-4 mb-4';
-                    card.innerHTML = `
-                        <div class="card h-100">
-                            <div class="card-header">
-                                <h5 class="card-title mb-0">${model.toUpperCase()}</h5>
-                            </div>
-                            <div class="card-body">
-                                <p class="card-text">${analysis.replace(/\n/g, '<br>')}</p>
-                            </div>
-                        </div>
-                    `;
+                    card.className = 'col-md-4 mb-4'; 
+
+                    let cardContent;
+                    if (modelResult && modelResult.error) {
+                        cardContent = `
+                            <div class="card h-100 border-danger">
+                                <div class="card-header bg-danger text-white">
+                                    <h5 class="card-title mb-0">${model.toUpperCase()} Analysis Failed</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text text-danger">Error: ${modelResult.error}</p>
+                                </div>
+                            </div>`;
+                    } else if (modelResult && modelResult.analysis) {
+                         const analysisText = modelResult.analysis;
+                         const modelIdentifier = modelResult.model || model.toUpperCase(); 
+                         cardContent = `
+                             <div class="card h-100">
+                                 <div class="card-header">
+                                     <h5 class="card-title mb-0">${modelIdentifier}</h5>
+                                 </div>
+                                 <div class="card-body">
+                                     <p class="card-text">${analysisText.replace(/\n/g, '<br>')}</p>
+                                 </div>
+                             </div>`;
+                     } else {
+                         cardContent = `
+                            <div class="card h-100 border-warning">
+                                 <div class="card-header bg-warning">
+                                    <h5 class="card-title mb-0">${model.toUpperCase()}</h5>
+                                </div>
+                                 <div class="card-body">
+                                     <p class="card-text text-muted">Analysis data not available for this model.</p>
+                                 </div>
+                             </div>`;
+                     }
+                    card.innerHTML = cardContent;
                     resultsContent.appendChild(card);
                 }
-
                 resultsDiv.appendChild(resultsContent);
+
             } else {
-                resultsDiv.innerHTML += `
-                    <div class="alert alert-warning text-center" role="alert">
-                        No analysis data available
-                    </div>
-                `;
+                resultsDiv.innerHTML += `<div class="alert alert-warning text-center" role="alert">Analysis completed, but no result data was returned.</div>`;
             }
-            
-            resultsDiv.classList.remove('d-none');
+
+            resultsDiv.classList.remove('d-none'); 
         }
 
         if (analyzeBtn) {
             analyzeBtn.addEventListener('click', fetchAnalysis);
+        } else {
+            console.error("Analyze button not found!");
         }
     });
     </script>
