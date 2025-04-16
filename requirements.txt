@@ -36,6 +36,7 @@ pytest==8.3.5
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.0
 pytz==2025.2
+redis==4.5.4 # Added for Vercel KV
 requests==2.32.3
 six==1.17.0
 sniffio==1.3.1
