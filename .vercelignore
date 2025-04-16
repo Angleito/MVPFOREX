@@ -1,0 +1,36 @@
+# Vercel Ignore File
+
+# Environment files
+.env
+*.env.*
+!.env.production
+
+# Virtual environment
+venv/
+
+# Node modules
+node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Test cache
+.pytest_cache/
+
+# Development/Local workflow files
+scripts/
+tasks/
+mvpprd.md
+
+# Git directory
+.git/
+
+# OS-specific files
+.DS_Store
+
+# Project specific files
+.cursor/
+
+# Log files
+*.log
