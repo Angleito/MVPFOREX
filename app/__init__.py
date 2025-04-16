@@ -41,15 +41,16 @@ def create_app():
     # --- End Log Environment Variables ---
 
     # --- Initialize Vercel KV (Redis) ---
-    kv_url = os.getenv("KV_URL")
-    app.logger.info(f"KV_URL type from env: {type(kv_url)}") # Log type
+    redis_url_env_var_name = "KV_REDIS_URL" # Define the var name we are looking for
+    kv_url = os.getenv(redis_url_env_var_name)
+    app.logger.info(f"{redis_url_env_var_name} type from env: {type(kv_url)}") # Log type using the variable name
 
     if kv_url:
-        app.logger.info(f"KV_URL found. Starts with: {kv_url[:10]}...") # Log start of URL
+        app.logger.info(f"{redis_url_env_var_name} found. Starts with: {kv_url[:10]}...") # Log start of URL
         redis_client_instance = None
         try:
             # Attempt connection setup
-            app.logger.info("Attempting redis.from_url(kv_url)...")
+            app.logger.info(f"Attempting redis.from_url({redis_url_env_var_name})...")
             redis_client_instance = redis.from_url(kv_url)
             app.logger.info("redis.from_url call successful.")
 
@@ -69,16 +70,16 @@ def create_app():
                  app.redis_client = None # Set to None on ping failure
 
         except redis.exceptions.ConnectionError as conn_err: # Catch errors during from_url
-            app.logger.error(f"Vercel KV connection error during redis.from_url (Check KV_URL syntax/network): {conn_err}")
+            app.logger.error(f"Vercel KV connection error during redis.from_url (Check {redis_url_env_var_name} syntax/network): {conn_err}")
             app.redis_client = None # Set to None on connection failure
         except ValueError as val_err: # Catch URL parsing errors
-            app.logger.error(f"Error parsing KV_URL (invalid format?): {val_err}")
+            app.logger.error(f"Error parsing {redis_url_env_var_name} (invalid format?): {val_err}")
             app.redis_client = None
         except Exception as e: # Catch other unexpected errors during setup
             app.logger.error(f"Failed to initialize Vercel KV connection during setup: {e}", exc_info=True)
             app.redis_client = None # Set to None on general failure
     else:
-        app.logger.warning("KV_URL environment variable not set or empty. Vercel KV integration disabled.")
+        app.logger.warning(f"{redis_url_env_var_name} environment variable not set or empty. Vercel KV integration disabled.")
         app.redis_client = None # Set to None if URL not found
 
     # Ensure app.redis_client exists, even if None
