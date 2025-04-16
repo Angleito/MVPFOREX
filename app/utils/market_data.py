@@ -4,20 +4,16 @@ Utility functions for fetching and processing market data from OANDA.
 
 def get_latest_market_data(oanda_client, instrument, granularity, count):
     """
-    Fetch latest market data and return structure for analysis.
-    Returns a dict with keys: data, trend_info, structure_points, error (optional).
+    Fetch minimal market data for MVP. Uses get_current_price and returns dummy structure.
     """
     try:
-        # Fetch candlestick data from OANDA
-        candles = oanda_client.get_candles(
-            instrument=instrument,
-            granularity=granularity,
-            count=count
-        )
-        # Structure the data for analysis (simplified)
-        data = candles if candles else []
-        # Dummy trend_info and structure_points for now
-        trend_info = {"direction": "N/A", "strength": "N/A", "current_price": data[-1]["close"] if data else None}
+        price_response = oanda_client.get_current_price(instrument)
+        # Extract price from response
+        price = None
+        if price_response and 'prices' in price_response:
+            price = float(price_response['prices'][0]['asks'][0]['price'])
+        data = [{"instrument": instrument, "price": price}] if price else []
+        trend_info = {"direction": "N/A", "strength": "N/A", "current_price": price}
         structure_points = {"swing_highs": [], "swing_lows": []}
         return {
             "data": data,
