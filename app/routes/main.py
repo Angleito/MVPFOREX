@@ -4,95 +4,40 @@ from app.utils.ai_client import get_multi_model_analysis
 from app.utils.oanda_client import oanda_client
 from config.settings import MODELS
 import logging
+import threading
+import uuid
+import time
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('main', __name__)
 
+# In-memory storage for task results (simple approach, limitations apply)
+# Structure: { 'task_id': {'status': 'pending'/'completed'/'error', 'result': data or None, 'error': msg or None} }
+task_results = {}
+
+def run_analysis_background(task_id: str, market_data, trend_info, structure_points):
+    """Function to run the AI analysis in a background thread."""
+    try:
+        logger.info(f"Background task {task_id}: Starting AI analysis.")
+        # This still calls the function that currently only runs Claude
+        analysis_data = get_multi_model_analysis(
+            market_data=market_data,
+            trend_info=trend_info,
+            structure_points=structure_points
+        )
+        logger.info(f"Background task {task_id}: AI analysis completed.")
+        task_results[task_id] = {'status': 'completed', 'result': analysis_data}
+    except Exception as e:
+        logger.error(f"Background task {task_id}: Error during analysis: {str(e)}", exc_info=True)
+        task_results[task_id] = {'status': 'error', 'error': str(e)}
+
+
 @bp.route('/')
 def index():
     """Render the main page."""
     return render_template('index.html')
-
-@bp.route('/test_integration')
-def test_integration():
-    """Test both OANDA and AI model integrations."""
-    try:
-        logger.info("Starting integration test...")
-        
-        # Test OANDA connection first
-        logger.info("Testing OANDA connection...")
-        account_summary = oanda_client.get_account_summary()
-        logger.info(f"Successfully connected to OANDA account {account_summary['account']['id']}")
-        
-        # Get OANDA candle data
-        logger.info("Fetching OANDA candle data...")
-        oanda_data = oanda_client.get_candles(
-            instrument="XAU_USD",
-            timeframe="M5",
-            count=10
-        )
-        logger.info(f"Successfully retrieved {len(oanda_data['candles'])} candles")
-        
-        # Get current price data
-        logger.info("Fetching current price data...")
-        current_price = oanda_client.get_current_price("XAU_USD")
-        logger.info("Successfully retrieved current price data")
-        
-        # Extract the latest price info
-        latest_candle = oanda_data['candles'][-1]
-        trend_info = {
-            "direction": "Bullish" if latest_candle['close'] > latest_candle['open'] else "Bearish",
-            "strength": "Testing",
-            "current_price": latest_candle['close']
-        }
-        
-        # Test AI integration
-        logger.info("Testing AI integration...")
-        client = get_ai_client()
-        ai_response = client.chat.completions.create(
-            model=MODELS['gpt4']['id'],
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Analyze this XAUUSD price data briefly: Current price ${latest_candle['close']}, previous close was ${oanda_data['candles'][-2]['close']}. Respond in 2 sentences maximum."
-                }
-            ],
-            max_tokens=100,
-            temperature=0.7
-        )
-        logger.info("Successfully received AI analysis")
-        
-        response_data = {
-            'success': True,
-            'oanda_connection': 'successful',
-            'account_info': {
-                'id': account_summary['account']['id'],
-                'currency': account_summary['account']['currency'],
-                'balance': float(account_summary['account']['balance'])
-            },
-            'latest_candle_data': {
-                'time': latest_candle['time'],
-                'open': latest_candle['open'],
-                'high': latest_candle['high'],
-                'low': latest_candle['low'],
-                'close': latest_candle['close'],
-                'volume': latest_candle['volume']
-            },
-            'current_price_data': current_price['prices'][0] if current_price['prices'] else None,
-            'ai_analysis': ai_response.choices[0].message.content if ai_response.choices else "No AI analysis generated"
-        }
-        
-        logger.info("Integration test completed successfully")
-        return jsonify(response_data)
-        
-    except Exception as e:
-        logger.error(f"Integration test failed: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
 
 @bp.route('/test_requesty')
 def test_requesty():
@@ -122,57 +67,68 @@ def test_requesty():
             'error': str(e)
         }), 500
 
-@bp.route('/analyze')
-def analyze():
-    """Analyze market data and generate trading recommendations from configured models."""
+@bp.route('/analyze', methods=['POST']) 
+def start_analysis_task():
+    """Starts the AI analysis in a background thread and returns a task ID."""
     try:
+        # --- Get necessary data (similar to before) ---
+        logger.info("Received request to start analysis task.")
         # Fetch live OANDA data
-        logger.info("Fetching live OANDA data for /analyze endpoint...")
         current_price_data = oanda_client.get_current_price("XAU_USD")
         live_price = None
         if current_price_data and 'prices' in current_price_data and current_price_data['prices']:
-            # Use the first ask price as the current live price
             live_price = float(current_price_data['prices'][0]['asks'][0]['price'])
-            logger.info(f"Successfully fetched live price: {live_price}")
-        else:
-            logger.warning("Could not fetch live price from OANDA, using placeholder.")
-            live_price = 2300.00 # Fallback placeholder if API fails
+        else: live_price = 2300.00 # Fallback
+        logger.info(f"Using live price: {live_price}")
 
-        # Use live price in trend info (keep other mock data for now)
-        trend_info = {
-            "direction": "Bullish",  # This might also need live calculation later
-            "strength": "Strong",   # This might also need live calculation later
-            "current_price": live_price
-        }
+        trend_info = {"direction": "N/A", "strength": "N/A", "current_price": live_price}
+        mock_structure_points = {"swing_highs": [], "swing_lows": []} # Keep simple for now
+        market_data = {}
+        # --- End Data Fetch ---
 
-        # Mock data for structure points (replace with real data fetching later if needed)
-        mock_structure_points = {
-            "swing_highs": [
-                {"price": live_price, "time": "2025-04-16T10:00:00Z"}, # Example using live price
-                {"price": round(live_price * 0.998, 2), "time": "2025-04-16T09:45:00Z"}
-            ],
-            "swing_lows": [
-                {"price": round(live_price * 0.995, 2), "time": "2025-04-16T09:30:00Z"},
-                {"price": round(live_price * 0.992, 2), "time": "2025-04-16T09:15:00Z"}
-            ]
-        }
-        market_data = {} # Keep market_data empty for now
+        task_id = str(uuid.uuid4())
+        task_results[task_id] = {'status': 'pending'} # Store initial status
 
-        # Perform multi-model AI analysis (calls only Claude due to previous change in ai_client.py)
-        logger.info("Performing multi-model AI analysis (without image)...")
-        all_analyses = get_multi_model_analysis(
-            market_data=market_data, # Keep market_data empty
-            trend_info=trend_info,
-            structure_points=mock_structure_points
+        logger.info(f"Starting background thread for task_id: {task_id}")
+        thread = threading.Thread(
+            target=run_analysis_background,
+            args=(task_id, market_data, trend_info, mock_structure_points)
         )
+        thread.daemon = True # Allows app to exit even if threads are running (less critical here)
+        thread.start()
 
-        logger.info("Returning analysis results.")
-        return jsonify({
-            'trend': trend_info,
-            'structure_points': mock_structure_points,
-            'analyses': all_analyses
-        })
+        # Immediately return the task ID
+        return jsonify({'task_id': task_id, 'status': 'started'}), 202 # 202 Accepted status
 
     except Exception as e:
-        logger.error(f"Error in /analyze route: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error starting analysis task: {str(e)}", exc_info=True)
+        return jsonify({'error': f'Failed to start analysis: {str(e)}'}), 500
+
+
+@bp.route('/results/<task_id>', methods=['GET'])
+def get_analysis_results(task_id: str):
+    """Polls for the results of a previously started analysis task."""
+    logger.debug(f"Received request for results of task_id: {task_id}")
+    if task_id not in task_results:
+        logger.warning(f"Task ID {task_id} not found.")
+        return jsonify({'status': 'error', 'error': 'Task ID not found'}), 404
+
+    task_info = task_results.get(task_id)
+
+    if task_info['status'] == 'completed':
+        logger.info(f"Task {task_id} completed. Returning results.")
+        # Optionally remove completed task from memory after retrieval?
+        # del task_results[task_id]
+        return jsonify({'status': 'completed', 'data': task_info['result']})
+    elif task_info['status'] == 'pending':
+        logger.debug(f"Task {task_id} is still pending.")
+        return jsonify({'status': 'pending'})
+    elif task_info['status'] == 'error':
+        logger.error(f"Task {task_id} failed. Returning error.")
+        # Optionally remove failed task from memory?
+        # del task_results[task_id]
+        return jsonify({'status': 'error', 'error': task_info.get('error', 'Unknown error')}), 500
+    else:
+        # Should not happen
+        logger.error(f"Task {task_id} has unknown status: {task_info.get('status')}")
+        return jsonify({'status': 'error', 'error': 'Unknown task status'}), 500
