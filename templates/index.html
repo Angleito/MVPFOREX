@@ -55,7 +55,7 @@
 
         <div id="model-buttons" class="mb-4 text-center">
             {% set model_labels = {'gpt4': 'GPT-4', 'claude': 'Claude', 'perplexity': 'Perplexity'} %}
-            {% for model in config['MODELS'].keys() %}
+            {% for model in MODELS.keys() %}
                 <button class="btn btn-primary mx-2 mb-2" id="analyzeBtn_{{model}}" onclick="fetchAnalysis('{{model}}')">
                     Analyze with {{ model_labels.get(model, model|capitalize) }}
                 </button>

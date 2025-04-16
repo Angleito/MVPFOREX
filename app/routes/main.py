@@ -23,10 +23,13 @@ except Exception as e:
     oanda_client = None # Ensure it exists but indicates failure
 
 # --- Routes ---
+from config.settings import MODELS
+
 @bp.route('/')
 def index():
     """Render the main page."""
-    return render_template('index.html')
+    return render_template('index.html', MODELS=MODELS)
+
 
 @bp.route('/analyze', methods=['POST'])
 def analyze():
