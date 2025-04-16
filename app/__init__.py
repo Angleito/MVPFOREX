@@ -2,6 +2,7 @@
 import os
 import redis
 import logging
+import json
 from flask import Flask
 from dotenv import load_dotenv
 from config.settings import DEBUG, SECRET_KEY
@@ -23,6 +24,21 @@ def create_app():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     app.logger.setLevel(logging.INFO)
     app.logger.info('Flask app created. Initializing components...')
+
+    # --- Log all available environment variables ---
+    app.logger.info("--- START VERCEL ENVIRONMENT VARIABLES ---")
+    try:
+        # Use json.dumps for potentially cleaner multiline output in logs
+        env_vars_dict = dict(os.environ)
+        # Redact sensitive values before logging if necessary, e.g., KV_URL password
+        # For now, let's just log keys to be safer, or the full dict if you're comfortable in dev logs
+        # app.logger.info(json.dumps(list(env_vars_dict.keys()), indent=2, sort_keys=True)) # Option 1: Log only keys
+        app.logger.info(json.dumps(env_vars_dict, indent=2, sort_keys=True)) # Option 2: Log full dict (check sensitivity)
+    except Exception as e:
+        app.logger.error(f"Failed to serialize os.environ: {e}") # Fallback if serialization fails
+        app.logger.info(str(os.environ)) # Log raw string representation as fallback
+    app.logger.info("--- END VERCEL ENVIRONMENT VARIABLES ---")
+    # --- End Log Environment Variables ---
 
     # --- Initialize Vercel KV (Redis) ---
     kv_url = os.getenv("KV_URL")
