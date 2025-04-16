@@ -5,10 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XAUUSD Analysis - GPT-4.1, Claude 3.7 & Perplexity Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Optional: Set a minimum height for the chart container */
+        #tradingview-widget-container {
+            height: 400px; /* Adjust as needed */
+        }
+    </style>
 </head>
 <body>
     <div class="container mt-4">
         <h1 class="mb-4">XAUUSD Analysis with GPT-4.1, Claude 3.7 & Perplexity Pro</h1>
+
+        <!-- TradingView Widget Container -->
+        <div id="tradingview-widget-container" class="mb-4">
+            <div id="tradingview-chart"></div>
+            <div class="tradingview-widget-copyright">
+                <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
+                    <span class="blue-text">Track all markets on TradingView</span>
+                </a>
+            </div>
+        </div>
+        <!-- End TradingView Widget Container -->
         
         <div class="row mb-4">
             <div class="col">
@@ -31,6 +48,26 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- TradingView Widget Script -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script type="text/javascript">
+    new TradingView.widget(
+      {
+      "autosize": true,
+      "symbol": "OANDA:XAUUSD", // Specify OANDA source for XAUUSD
+      "interval": "5", // 5-minute interval
+      "timezone": "Etc/UTC",
+      "theme": "light", // Can be "dark" or "light"
+      "style": "1", // 1 = Candles, 2 = Bars, etc.
+      "locale": "en",
+      "enable_publishing": false,
+      "hide_side_toolbar": false,
+      "allow_symbol_change": true,
+      "container_id": "tradingview-chart" // Target the inner div
+    }
+      );
+    </script>
+    <!-- End TradingView Widget Script -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
