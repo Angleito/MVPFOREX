@@ -10,9 +10,11 @@ cycler==0.12.1
 distro==1.9.0
 exceptiongroup==1.2.2
 Flask==3.1.0
+Flask-Cors==4.0.0  # Added missing flask-cors
 Flask-Login==0.6.3
 Flask-WTF==1.2.2
 fonttools==4.57.0
+gunicorn==21.2.0  # For production serving
 h11==0.14.0
 httpcore==1.0.8
 httpx==0.28.1
@@ -25,9 +27,12 @@ Jinja2==3.1.6
 jiter==0.9.0
 kiwisolver==1.4.7
 MarkupSafe==3.0.2
+matplotlib==3.8.4  # Common dependency for data visualization
+numpy==1.26.4  # Common dependency for data analysis
 oandapyV20==0.7.2
 openai==1.74.0
 packaging==24.2
+pandas==2.2.2  # Common dependency for data analysis
 pluggy==1.5.0
 pydantic==2.11.3
 pydantic_core==2.33.1
@@ -37,7 +42,8 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.1.0
 pytz==2025.2
 SQLAlchemy==2.0.30
-psycopg2-binary==2.9.9 # For Supabase/Postgres
+psycopg2-binary==2.9.9  # For Supabase/Postgres
+redis==5.0.1  # For Redis client
 requests==2.32.3
 six==1.17.0
 sniffio==1.3.1
@@ -47,6 +53,6 @@ typing-inspection==0.4.0
 typing_extensions==4.13.2
 tzdata==2025.2
 urllib3==2.4.0
-Werkzeug==3.1.3
+Werkzeug==3.1.0
 WTForms==3.2.1
 zipp==3.21.0

@@ -11,8 +11,12 @@ from config.settings import DEBUG, SECRET_KEY
 # Load environment variables early
 load_dotenv()
 
-def create_app():
-    """Create and configure the Flask application."""
+def create_app(serverless=False):
+    """Create and configure the Flask application.
+    
+    Args:
+        serverless (bool): Flag indicating if app is running in serverless environment
+    """
     # Configure logging FIRST for Vercel environment
     logging.basicConfig(
         level=logging.INFO,
@@ -25,25 +29,37 @@ def create_app():
     # Log platform information
     logger.info(f"Python version: {sys.version}")
     logger.info(f"Current working directory: {os.getcwd()}")
+    logger.info(f"Serverless mode: {serverless}")
     
     try:
         app = Flask(__name__, 
                     template_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates'),
                     static_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static'))
         
-        CORS(app)  # Enable CORS for all routes
+        CORS(app, supports_credentials=True)  # Enable CORS with credentials support
         
         # Load configuration
         app.config['DEBUG'] = DEBUG
         app.config['SECRET_KEY'] = SECRET_KEY
+        app.config['SERVERLESS'] = serverless
+        
+        # Disable caching for API responses in serverless mode
+        if serverless:
+            @app.after_request
+            def add_header(response):
+                """Add headers to disable caching."""
+                response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
+                return response
         
         app.logger.setLevel(logging.INFO)
         app.logger.info('Flask app created. Initializing components...')
 
         # --- Initialize Redis if in non-serverless environment ---
-        is_vercel = os.getenv('VERCEL', '0') == '1'
+        is_vercel = os.getenv('VERCEL', '0') == '1' or serverless
         if is_vercel:
-            logger.info("Running in Vercel environment - skipping Redis initialization")
+            logger.info("Running in Vercel/serverless environment - skipping Redis initialization")
             app.redis_client = None
         else:
             # Import Redis only if not in Vercel environment
@@ -77,6 +93,13 @@ def create_app():
         except Exception as e:
             logger.error(f"Error registering blueprints: {str(e)}", exc_info=True)
             raise
+            
+        # Add a basic health check endpoint
+        @app.route('/health')
+        def health_check():
+            """Health check endpoint to verify application is running."""
+            from flask import jsonify
+            return jsonify({"status": "healthy", "serverless": serverless})
 
         logger.info("Flask application instance creation complete.")
         return app
