@@ -5,15 +5,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get API URL from environment variable
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050';
+    // Get API URL from environment variable with explicit IPv4 address
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5050';
+    console.log(`Checking Flask backend health at: ${API_URL}/health`);
+    
+    // Use AbortController for timeout management
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
     
     const response = await fetch(`${API_URL}/health`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`Backend health check failed with status: ${response.status}`);

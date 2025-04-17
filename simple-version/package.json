@@ -1,0 +1,27 @@
+{
+  "name": "mvpforex-simple",
+  "version": "1.0.0",
+  "description": "Simple MVPFOREX Gold Trading Dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "forex",
+    "gold",
+    "trading",
+    "websocket",
+    "realtime"
+  ],
+  "author": "MVPFOREX",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "socket.io": "^4.6.2"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}

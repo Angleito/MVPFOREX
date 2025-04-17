@@ -33,19 +33,20 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get API URL from environment or use fallback
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    // Get API URL from environment with explicit IPv4 address
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5050';
     
     // Set up timeout for the request
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     
     // Log what we're doing
     console.log('Attempting to fetch market data from backend...');
     
     try {
-      // First try the candles endpoint (which we know exists in the Flask backend)
-      const response = await fetch(`${API_URL}/candles?instrument=XAU_USD&granularity=H1&count=100`, {
+      // Try the market-data endpoint in the Flask backend
+      console.log(`Proxying market-data request to: ${API_URL}/api/market-data`);
+      const response = await fetch(`${API_URL}/api/market-data`, {
         method: 'GET',
         signal: controller.signal,
         headers: {

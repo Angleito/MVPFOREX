@@ -6,11 +6,15 @@ import sys
 from flask import Flask
 from flask_cors import CORS
 from flask_compress import Compress
+from flask_socketio import SocketIO
 from dotenv import load_dotenv
 from config.settings import DEBUG, SECRET_KEY
 
 # Load environment variables early
 load_dotenv()
+
+# Initialize Flask-SocketIO instance at module level
+socketio = SocketIO(cors_allowed_origins="*")
 
 def create_app(serverless=False):
     """Create and configure the Flask application.
@@ -42,6 +46,13 @@ def create_app(serverless=False):
         
         # Enable compression
         Compress(app)
+        
+        # Initialize Socket.IO with the Flask app
+        socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*")
+        
+        # Initialize OANDA streaming manager
+        from app.utils.oanda_stream import init_stream_manager
+        init_stream_manager(socketio)
         
         # Load configuration
         app.config['DEBUG'] = DEBUG
@@ -100,11 +111,21 @@ def create_app(serverless=False):
                 logger.warning("Redis package not available. Redis functionality disabled.")
                 app.redis_client = None
 
-        # Register blueprints
+        # Register blueprints/routes
         try:
-            from app.routes import main
-            app.register_blueprint(main.bp)
+            # Import using the correct blueprint variable names
+            from app.routes.main import bp as main_bp
+            app.register_blueprint(main_bp)
             logger.info("Registered main blueprint at root level.")
+            
+            from app.routes.api import api_bp
+            app.register_blueprint(api_bp, url_prefix='/api')
+            logger.info("Registered API blueprint with /api prefix.")
+            
+            # Register test routes for API debugging
+            from app.routes.test_route import test_bp
+            app.register_blueprint(test_bp, url_prefix='/test')
+            logger.info("Registered TEST blueprint with /test prefix.")
         except Exception as e:
             logger.error(f"Error registering blueprints: {str(e)}", exc_info=True)
             raise
@@ -122,3 +143,11 @@ def create_app(serverless=False):
     except Exception as e:
         logger.critical(f"Fatal error during application initialization: {str(e)}", exc_info=True)
         raise
+
+# Import Socket.IO routes
+try:
+    from app.routes.socket_routes import register_socket_routes
+    register_socket_routes(socketio)
+except ImportError:
+    # This will be created next
+    pass

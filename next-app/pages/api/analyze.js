@@ -11,13 +11,25 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetch('http://localhost:5000/api/analyze', {
+    // Get API URL from environment variable with explicit IPv4 address
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5050';
+    console.log(`Proxying analyze request to: ${API_URL}/api/analyze`);
+    
+    // Use AbortController for timeout management
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+    
+    const response = await fetch(`${API_URL}/api/analyze`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
-      body: JSON.stringify({ model })
+      body: JSON.stringify({ model }),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`Backend responded with status: ${response.status}`);

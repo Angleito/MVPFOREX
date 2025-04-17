@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import ModelButton from '../components/ModelButton';
 import MarketOverview from '../components/MarketOverview';
 import { isStorageAvailable } from '../utils/storage';
+import { useMarketDataStream } from '../lib/socketClient';
 
 // Error boundary component
 class ErrorBoundary extends React.Component {
@@ -116,6 +117,15 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [storageAvailable, setStorageAvailable] = useState(null);
   const [marketData, setMarketData] = useState(null);
+  const [isUsingWebSocket, setIsUsingWebSocket] = useState(false);
+  
+  // Socket.IO connection for real-time market data
+  const {
+    isConnected: wsConnected,
+    priceData: wsMarketData,
+    error: wsError,
+    reconnect: wsReconnect
+  } = useMarketDataStream('XAU_USD');
   
   // Model definitions
   const modelList = ['GPT-4.1', 'Claude 3.7', 'Perplexity Pro'];
@@ -125,7 +135,33 @@ export default function Home() {
     'Perplexity Pro': "Perplexity's Pro AI, focused on rapid, data-driven market insights."
   };
 
-  // Check environment conditions on page load
+  // Function to check API availability
+  const checkApi = async () => {
+    try {
+      console.log('Checking API availability...');
+      const response = await fetch('/api/health');
+      
+      if (!response.ok) {
+        throw new Error(`API returned status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('API health check response:', data);
+      
+      if (data.status === 'healthy') {
+        console.log('Backend API is available');
+        return true;
+      } else {
+        console.log('Backend API is unhealthy');
+        return false;
+      }
+    } catch (err) {
+      console.warn('Backend API is unreachable:', err);
+      return false;
+    }
+  };
+  
+  // Check environment conditions and initialize data fetching
   useEffect(() => {
     // Check storage availability
     try {
@@ -137,36 +173,43 @@ export default function Home() {
       setStorageAvailable(false);
     }
     
-    // Check API availability with a lightweight request
-    const checkApi = async () => {
-      try {
-        console.log('Checking API availability...');
-        const response = await fetch('/api/health');
-        
-        if (!response.ok) {
-          throw new Error(`API returned status ${response.status}`);
+    // Check API and set up data fetching
+    console.log('Starting API availability check...');
+    checkApi()
+      .then(isAvailable => {
+        setApiStatus(isAvailable ? 'available' : 'unavailable');
+        console.log('API status:', isAvailable ? 'available' : 'unavailable');
+
+        // If API unavailable, use fallback data
+        if (!isAvailable) {
+          setMarketData(fallbackMarketData());
+          return;
         }
+
+        // Then initiate the market data fetch as a backup
+        fetchRealTimeData();
         
-        const data = await response.json();
-        console.log('API health check response:', data);
+        // Start the data refresh interval (every 20 seconds) as a backup to WebSockets
+        const interval = setInterval(() => {
+          if (!isUsingWebSocket) {
+            console.log('Refreshing market data via HTTP...');
+            fetchRealTimeData();
+          }
+        }, 20000);
         
-        if (data.status === 'healthy') {
-          console.log('Backend API is available');
-          setApiStatus('available');
-        } else {
-          console.log('Backend API is unhealthy');
-          setApiStatus('unavailable');
-        }
-      } catch (err) {
-        console.warn('Backend API is unreachable:', err);
+        return () => clearInterval(interval);
+      })
+      .catch(err => {
+        console.error('Error during API check:', err);
         setApiStatus('unavailable');
-      }
-    };
-    
-    // Try to initialize Supabase connection
-    const checkSupabase = async () => {
-      try {
-        const hasSupabaseConfig = !!(
+        setMarketData(fallbackMarketData());
+      });
+  }, [isUsingWebSocket]);
+  
+  // Try to initialize Supabase connection
+  const checkSupabase = async () => {
+    try {
+      const hasSupabaseConfig = !!(
           process.env.NEXT_PUBLIC_SUPABASE_URL && 
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
         );
@@ -221,107 +264,141 @@ export default function Home() {
 
     checkApi();
     fetchMarketData();
-    const intervalId = setInterval(fetchMarketData, 60000); // Update every minute
-
-    return () => clearInterval(intervalId);
   }, []);
+  
+  // Update market data from WebSocket stream
+  useEffect(() => {
+    if (wsMarketData) {
+      console.log('Received real-time WebSocket data:', wsMarketData);
+      setIsUsingWebSocket(true);
+      
+      // Calculate average of bid and ask for the current price
+      const currentPrice = wsMarketData.bid && wsMarketData.ask ? 
+        (wsMarketData.bid + wsMarketData.ask) / 2 : 
+        (wsMarketData.midPrice || wsMarketData.bid || wsMarketData.ask || 0);
+      
+      // Create a standardized data structure from WebSocket data
+      const processedData = {
+        currentPrice: Number(currentPrice.toFixed(2)) || 0,
+        dayHigh: marketData?.dayHigh || currentPrice + 2,
+        dayLow: marketData?.dayLow || currentPrice - 2,
+        dailyChange: marketData?.dailyChange || 0.1,
+        open: marketData?.open || currentPrice - 0.5,
+        previousClose: marketData?.previousClose || currentPrice - 0.7,
+        volume: marketData?.volume || 15000,
+        rsi: marketData?.rsi || 50,
+        macd: marketData?.macd || 0,
+        signal: marketData?.signal || 0,
+        trend: marketData?.trend || 'Neutral',
+        volatility: marketData?.volatility || 0.5,
+        fiftyDayMA: marketData?.fiftyDayMA || currentPrice - 5,
+        twoHundredDayMA: marketData?.twoHundredDayMA || currentPrice - 10,
+        supports: marketData?.supports || [currentPrice - 5, currentPrice - 10, currentPrice - 15],
+        resistances: marketData?.resistances || [currentPrice + 5, currentPrice + 10, currentPrice + 15],
+        // WebSocket specific data
+        spread: wsMarketData.spread || 0,
+        bid: wsMarketData.bid || 0,
+        ask: wsMarketData.ask || 0,
+        lastUpdated: new Date().toLocaleTimeString(),
+        isRealtime: true
+      };
+      
+      // Update state with the processed data
+      setMarketData(processedData);
+    }
+  }, [wsMarketData]);
+  
+  // Handle WebSocket errors
+  useEffect(() => {
+    if (wsError) {
+      console.error('WebSocket error:', wsError);
+      setIsUsingWebSocket(false);
+      
+      // If we don't have market data yet, fetch it via HTTP
+      if (!marketData) {
+        fetchRealTimeData();
+      }
+    }
+  }, [wsError]);
 
-  // Fetch real-time XAUUSD data from the Flask backend API
+  // Connection status effect
+  useEffect(() => {
+    console.log('WebSocket connection status:', wsConnected ? 'Connected' : 'Disconnected');
+    if (wsConnected) {
+      setApiStatus('available');
+    }
+  }, [wsConnected]);
+
+  // Fetch real-time XAUUSD data from the Next.js API proxy (HTTP fallback)
   const fetchRealTimeData = async () => {
     try {
-      console.log('Fetching real-time XAUUSD market data from API...');
+      console.log('Fetching real-time market data via HTTP...');
+      const startTime = Date.now();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5050';
+      const response = await fetch(`${apiUrl}/api/market-data`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
       
-      // Use your Flask backend API endpoint to get real market data
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://mvpforex-api.vercel.app';
-      const endpoint = `${apiUrl}/api/market-data`;
-      
-      const response = await fetch(endpoint);
+      // Check if the request was successful
       if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
       }
       
-      const apiData = await response.json();
-      console.log('API Response:', apiData);
+      const responseData = await response.json();
+      console.log(`Market data fetch completed in ${Date.now() - startTime}ms`);
       
-      if (apiData.error) {
-        throw new Error(`API returned error: ${apiData.error}`);
+      // Check if we have valid data
+      if (responseData && responseData.status === 'ok') {
+        const { current_price, day_high, day_low, daily_change, open, close, volume, market_data } = responseData;
+        
+        // Calculate indicators from the data
+        const indicators = market_data.indicators || {};
+        
+        // Create a standardized data structure for the UI
+        const processedData = {
+          currentPrice: Number(current_price) || 0,
+          dayHigh: Number(day_high) || 0,
+          dayLow: Number(day_low) || 0,
+          dailyChange: Number(daily_change) || 0,
+          open: Number(open) || 0,
+          previousClose: Number(close) || 0,
+          volume: Number(volume) || 0,
+          rsi: Number(indicators.rsi) || 50,
+          macd: Number(indicators.macd) || 0,
+          signal: Number(indicators.signal) || 0,
+          trend: indicators.trend || 'Neutral',
+          volatility: Number(indicators.volatility) || 0.5,
+          fiftyDayMA: Number(indicators.ma_50) || 0,
+          twoHundredDayMA: Number(indicators.ma_200) || 0,
+          supports: indicators.support_levels || [0, 0, 0],
+          resistances: indicators.resistance_levels || [0, 0, 0],
+          isRealtime: false
+        };
+        
+        // Only update state if we're not using WebSockets
+        if (!isUsingWebSocket) {
+          setMarketData(processedData);
+        }
+        return processedData;
+      } else {
+        console.error('Invalid market data structure:', responseData);
+        throw new Error('Invalid market data structure');
       }
-      
-      // Extract the current price and other data from API response
-      const currentPrice = apiData.trend_info?.current_price || 2400.00;
-      
-      // Get additional market data from API if available or calculate derived values
-      const timeNow = new Date();
-      const range = apiData.trend_info?.day_range || 15;
-      const prevClose = apiData.prev_close || (currentPrice - 3);
-      const dayHigh = apiData.day_high || (currentPrice + 7);
-      const dayLow = apiData.day_low || (currentPrice - 5);
-      const volume = apiData.volume || 15000;
-
-      // Calculate technical indicators if not provided by API
-      const dailyChange = apiData.daily_change || ((currentPrice - prevClose) / prevClose * 100).toFixed(2);
-      const volatility = apiData.volatility || ((dayHigh - dayLow) / prevClose * 100).toFixed(2);
-      const rsi = apiData.rsi || Math.min(Math.max(50 + (parseFloat(dailyChange) * 2), 30), 70);
-      const macd = apiData.macd || parseFloat((dailyChange / 15).toFixed(3));
-      const signal = apiData.signal || parseFloat((macd - 0.05).toFixed(3));
-      
-      // Moving averages - use API values or calculate
-      const fiftyDayMA = apiData.fifty_day_ma || parseFloat((currentPrice * 0.985).toFixed(2));
-      const twoHundredDayMA = apiData.two_hundred_day_ma || parseFloat((currentPrice * 0.96).toFixed(2));
-      
-      // Fibonacci levels based on day range
-      const fibRetracement = apiData.fib_retracement || {
-        '23.6%': (dayHigh - range * 0.236).toFixed(2),
-        '38.2%': (dayHigh - range * 0.382).toFixed(2),
-        '50.0%': (dayHigh - range * 0.5).toFixed(2),
-        '61.8%': (dayHigh - range * 0.618).toFixed(2),
-        '78.6%': (dayHigh - range * 0.786).toFixed(2),
-      };
-      
-      // Support and resistance - use API values or fallbacks
-      const supports = apiData.supports || [
-        parseFloat(dayLow.toFixed(2)),
-        parseFloat((currentPrice - (range * 0.5)).toFixed(2)),
-        parseFloat((currentPrice - (range * 1.2)).toFixed(2))
-      ];
-      
-      const resistances = apiData.resistances || [
-        parseFloat(dayHigh.toFixed(2)),
-        parseFloat((currentPrice + (range * 0.4)).toFixed(2)),
-        parseFloat((currentPrice + (range * 1.1)).toFixed(2))
-      ];
-      
-      // Create the full market data object with real API data
-      const marketData = {
-        source: 'oanda-api',
-        currentPrice,
-        prevClose,
-        dayHigh,
-        dayLow,
-        volume,
-        dailyChange,
-        volatility,
-        rsi,
-        macd,
-        signal,
-        fiftyDayMA,
-        twoHundredDayMA,
-        fibRetracement,
-        supports,
-        resistances,
-        trend: apiData.trend_info?.direction || 'Neutral',
-        trendStrength: apiData.trend_info?.strength || 'Moderate',
-        lastUpdated: timeNow.toISOString()
-      };
-      
-      console.log('Successfully fetched real-time market data');
-      return marketData;
     } catch (error) {
-      console.error('Error fetching real-time data:', error);
-      return fallbackMarketData();
+      console.error('Error fetching market data via HTTP:', error);
+      // Use fallback data if API call fails and we're not using WebSockets
+      if (!isUsingWebSocket) {
+        const fallbackData = fallbackMarketData();
+        setMarketData(fallbackData);
+        return fallbackData;
+      }
     }
   };
-  
+
   // Fallback market data generator in case API calls fail
   const fallbackMarketData = () => {
     console.warn('Using fallback market data');
@@ -370,28 +447,56 @@ export default function Home() {
     };
   };
 
-  // Handle model analysis with real-time data
-  const handleAnalyze = async (model) => {
+  // Create button to load the selected model
+  const handleModelSelect = (model) => {
+    // First clear old output
+    setModelOutputs({});
     setLoadingModel(model);
+    handleAnalyze(model);
+  };
+  
+  // Debug function to manually update a model output for testing
+  const debugSetOutput = (model, text) => {
+    console.log(`Debug setting output for ${model} to: ${text}`);
     setModelOutputs(prev => ({
       ...prev,
-      [model]: 'Fetching real-time OANDA XAUUSD data...'
+      [model]: text
     }));
-    
+  };
+
+  // Handle model analysis with real-time data
+  const handleAnalyze = async (model) => {
     try {
-      // Get real-time market data from API
-      const indicators = await fetchRealTimeData();
+      console.log(`handleAnalyze called for model: ${model}`);
+      
+      // Clear previous output and show loading state
+      setLoadingModel(model);
+      setModelOutputs(prev => {
+        const newOutputs = {
+          ...prev,
+          [model]: 'Fetching real-time OANDA XAUUSD data...'
+        };
+        console.log('Setting initial loading message:', newOutputs);
+        return newOutputs;
+      });
+      
+      // First, get the latest market data
+      console.log('Getting latest data for analysis...');
+      const latestData = await fetchRealTimeData();
+      console.log('Latest market data fetched successfully:', latestData);
+      
+      // Make sure we have valid market data before proceeding
+      if (!latestData || !latestData.currentPrice) {
+        console.error('Invalid market data returned from fetchRealTimeData():', latestData);
+        throw new Error('Failed to get valid market data for analysis');
+      }
       
       // Format date and time for analysis
       const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
       
-      // Try to get analysis from real AI models via the Flask API
-      let modelOutput = '';
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://mvpforex-api.vercel.app';
-      
       try {
-        // Map the frontend model name to the backend API model name
+        // Map the frontend model name to the Next.js API endpoint
         let apiModel = '';
         if (model === 'GPT-4.1') {
           apiModel = 'openai';
@@ -401,39 +506,60 @@ export default function Home() {
           apiModel = 'perplexity';
         }
         
-        console.log(`Requesting AI analysis from ${apiModel} model...`);
+        console.log(`Requesting AI analysis from ${apiModel} model via Next.js API proxy...`);
         
-        // Create request payload with market data
+        // Create request payload with market data - ensure all values are proper types
         const payload = {
           market_data: {
-            price: indicators.currentPrice,
-            day_high: indicators.dayHigh,
-            day_low: indicators.dayLow,
-            daily_change: indicators.dailyChange,
-            trend: indicators.trend || 'Neutral',
-            rsi: indicators.rsi,
-            macd: indicators.macd,
-            signal: indicators.signal,
-            fiftyDayMA: indicators.fiftyDayMA,
-            twoHundredDayMA: indicators.twoHundredDayMA,
-            supports: indicators.supports,
-            resistances: indicators.resistances,
-            fibRetracement: indicators.fibRetracement,
-            volume: indicators.volume,
-            volatility: indicators.volatility,
-            lastUpdated: indicators.lastUpdated
+            currentPrice: parseFloat(latestData.currentPrice) || 2300.0,
+            dayHigh: parseFloat(latestData.dayHigh) || 2310.0,
+            dayLow: parseFloat(latestData.dayLow) || 2290.0,
+            dailyChange: parseFloat(latestData.dailyChange) || 0.2,
+            open: parseFloat(latestData.open) || 2295.0,
+            previousClose: parseFloat(latestData.previousClose) || 2290.0,
+            volume: parseInt(latestData.volume || 15000, 10),
+            rsi: parseFloat(latestData.indicators?.rsi || 50),
+            macd: parseFloat(latestData.indicators?.macd || 0),
+            signal: parseFloat(latestData.indicators?.signal || 0),
+            trend: String(latestData.indicators?.trend || 'Neutral'),
+            volatility: parseFloat(latestData.indicators?.volatility || 0.5),
+            fiftyDayMA: parseFloat(latestData.indicators?.fiftyDayMA || (latestData.currentPrice * 0.98)),
+            twoHundredDayMA: parseFloat(latestData.indicators?.twoHundredDayMA || (latestData.currentPrice * 0.95)),
+            supports: Array.isArray(latestData.indicators?.supports) ? latestData.indicators.supports.map(s => parseFloat(s)) : [
+              parseFloat((latestData.dayLow - 5).toFixed(2)),
+              parseFloat((latestData.dayLow - 10).toFixed(2)),
+              parseFloat((latestData.dayLow - 15).toFixed(2))
+            ],
+            resistances: Array.isArray(latestData.indicators?.resistances) ? latestData.indicators.resistances.map(r => parseFloat(r)) : [
+              parseFloat((latestData.dayHigh + 5).toFixed(2)),
+              parseFloat((latestData.dayHigh + 10).toFixed(2)),
+              parseFloat((latestData.dayHigh + 15).toFixed(2))
+            ]
           }
         };
         
+        // Verify payload has valid values
+        console.log('Analysis payload created:', JSON.stringify(payload, null, 2));
+        
         // Make real API request for AI analysis
-        const response = await fetch(`${apiUrl}/api/analyze/${apiModel}`, {
+        console.log(`Sending ${apiModel} analysis request to local Next.js API: /api/analyze/${apiModel}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
+        // Use Next.js API routes instead of direct calls to Flask backend
+        // This avoids cross-origin issues and handles IPv6/IPv4 differences
+        const response = await fetch(`/api/analyze/${apiModel}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Accept': 'application/json'
           },
           body: JSON.stringify(payload),
-          timeout: 30000 // 30 second timeout
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
           throw new Error(`API request failed with status ${response.status}`);
@@ -445,54 +571,81 @@ export default function Home() {
         // Check if we got a valid response
         if (analysisData.analysis) {
           // Use the actual AI-generated analysis from the API
-          modelOutput = analysisData.analysis;
+          const modelOutput = analysisData.analysis;
           console.log(`Successfully received ${model} analysis from API`);
           
           // Add timestamp to the analysis
-          modelOutput += `\n\nData analyzed at ${date} ${time}`;
+          const formattedOutput = `${modelOutput}\n\nData analyzed at ${date} ${time}`;
           
-          // Return the API-generated analysis
-          return modelOutput;
+          // Update the UI with the analysis
+          setModelOutputs(prev => ({
+            ...prev,
+            [model]: formattedOutput
+          }));
+          
+          // Set analyzing state to false
+          setLoadingModel('');
+          
+          return formattedOutput;
         }
         
-        // If API returned empty analysis, continue to fallback
+        // If API returned empty analysis, throw error
+        console.warn('API returned empty analysis');
         throw new Error('Invalid or empty analysis from API');
         
-      } catch (apiError) {
-        // Log the API error but continue with fallback analysis
-        console.error(`Failed to get ${model} analysis from API:`, apiError);
-        console.log('Using fallback analysis generation...');
+      } catch (analysisError) {
+        console.error(`[ERROR] Failed to get ${model} analysis from API:`, analysisError);
+        console.error(`[ERROR] Error message: ${analysisError.message}`);
+        console.error(`[ERROR] Error stack: ${analysisError.stack}`);
+        
+        // Get detailed error info if available
+        let errorMessage = `Error loading ${model} analysis. Please try again.`;
+        if (analysisError.response && analysisError.response.data) {
+          errorMessage += ` Server message: ${analysisError.response.data.error || 'Unknown error'}`;
+        } else {
+          errorMessage += ` (${analysisError.message})`;
+        }
+        
+        // Update UI with error and show fallback analysis
+        setModelOutputs(prev => ({
+          ...prev,
+          [model]: errorMessage
+        }));
         
         // FALLBACK: Generate model-specific analysis if API fails
-        const trendEmoji = indicators.trend === 'Bullish' ? '📈' : indicators.trend === 'Bearish' ? '📉' : '➡️';
+        console.log('Using fallback analysis generation...');
         
-        const analyses = {
-          'GPT-4.1': `${trendEmoji} XAUUSD Technical Analysis (Simulated) - ${date} at ${time}\n\nCurrent Price: $${indicators.currentPrice.toFixed(2)} (${indicators.dailyChange}% daily change)\n\nKey Indicators:\n- RSI(14): ${indicators.rsi.toFixed(2)} (${indicators.rsi > 70 ? 'Overbought' : indicators.rsi < 30 ? 'Oversold' : 'Neutral'})\n- MACD: ${indicators.macd.toFixed(2)} / Signal: ${indicators.signal.toFixed(2)} (${indicators.macd > indicators.signal ? 'Bullish' : 'Bearish'} momentum)\n- 50 Day MA: $${indicators.fiftyDayMA.toFixed(2)} (Price ${indicators.currentPrice > indicators.fiftyDayMA ? 'above' : 'below'} MA, ${indicators.currentPrice > indicators.fiftyDayMA ? 'bullish' : 'bearish'})\n- 200 Day MA: $${indicators.twoHundredDayMA.toFixed(2)} (${indicators.currentPrice > indicators.twoHundredDayMA ? 'Long-term uptrend' : 'Long-term downtrend'})\n- Volatility: ${indicators.volatility}% (${parseFloat(indicators.volatility) > 0.8 ? 'Above average' : 'Average'})\n\nTechnical Outlook:\nXAUUSD is ${indicators.currentPrice > indicators.prevClose ? 'trending higher' : 'trending lower'} with immediate resistance at $${indicators.resistances[0]}. RSI at ${indicators.rsi.toFixed(2)} indicates ${indicators.rsi > 70 ? 'overbought conditions, suggesting a potential reversal' : indicators.rsi < 30 ? 'oversold conditions, suggesting a potential bounce' : 'neutral conditions'}. The MACD ${indicators.macd > indicators.signal ? 'remains positive relative to the signal line, confirming bullish momentum' : 'has crossed below the signal line, indicating bearish pressure'}.\n\nKey support levels are at $${indicators.supports[0]} (daily low) and $${indicators.supports[1]} (previous resistance now support). The 61.8% Fibonacci retracement at $${indicators.fibRetracement['61.8%']} should provide additional support on pullbacks.\n\nStrategy Recommendation:\nConservative: ${indicators.rsi > 60 ? 'Consider waiting for a pullback to $' + indicators.fibRetracement['38.2%'] + ' before entering long positions.' : 'Look for long entries near $' + indicators.supports[0] + ' with tight stops.'}\nAggressive: ${indicators.dailyChange > 0 ? 'Maintain long positions with stops below $' + indicators.supports[1] + '.' : 'Consider short positions below $' + indicators.supports[0] + ' with target at $' + indicators.fibRetracement['61.8%'] + '.'}\n\nTarget: $${indicators.resistances[1]} with extended target at $${indicators.resistances[2]} if volume increases.\n\nData last updated: ${new Date(indicators.lastUpdated).toLocaleTimeString()}\n\nNote: This is simulated analysis (API connection failed)`,
-          
-          'Claude 3.7': `OANDA XAUUSD Analysis - ${date}\n\nPrice Action Summary (${time}):\nXAUUSD is currently trading at $${indicators.currentPrice.toFixed(2)}, with daily range of $${indicators.dayLow.toFixed(2)}-$${indicators.dayHigh.toFixed(2)}. Volume at ${indicators.volume} units suggests ${indicators.volume > 15000 ? 'strong' : 'moderate'} market participation.\n\nFibonacci Analysis:\nRecent swing high-low retracement levels:${Object.entries(indicators.fibRetracement).map(([level, price]) => `\n• ${level}: $${price}`).join('')}\n\nThe 38.2% level at $${indicators.fibRetracement['38.2%']} appears to be currently acting as immediate support, while the 23.6% level at $${indicators.fibRetracement['23.6%']} provides resistance.\n\nWave Structure:\nGold appears to be in ${indicators.currentPrice > indicators.prevClose ? 'wave 3' : 'wave 4'} of a 5-wave Elliott sequence, likely ${indicators.currentPrice > indicators.prevClose ? 'trending between $' + indicators.supports[1] + '-$' + indicators.resistances[1] : 'range-bound between $' + indicators.supports[0] + '-$' + indicators.resistances[0]}. Fibonacci time extensions suggest potential breakout attempt within 2-3 trading sessions.\n\nMarket Context:\n${indicators.currentPrice > indicators.prevClose ? 'USD weakness providing tailwind for gold' : 'Strong USD headwinds pressuring gold'}, while physical demand remains ${indicators.volume > 15000 ? 'robust' : 'steady'} according to OANDA order flow data. Institutional positioning shows ${indicators.rsi > 50 ? 'net-long' : 'balanced'} bias with ${Math.round(indicators.rsi * 1.2)}% bullish sentiment.\n\nRecommendation:\n${indicators.macd > indicators.signal ? 'Watch for breakout continuation above $' + indicators.resistances[0] + ' with increased volume, which would signal potential test of $' + indicators.resistances[1] + ' level.' : 'Monitor for reversal signals at current levels, with potential retest of support at $' + indicators.supports[1] + '.'}\n\nPosition management: Trailing stop recommended at $${(indicators.currentPrice - (indicators.currentPrice * 0.01)).toFixed(2)} to protect positions from market volatility.\n\nData last updated: ${new Date(indicators.lastUpdated).toLocaleTimeString()}\n\nNote: This is simulated analysis (API connection failed)`,
-          
-          'Perplexity Pro': `## XAUUSD OANDA Technical Analysis\nTimestamp: ${date} ${time}\n\n### Current Market Status\n• Price: $${indicators.currentPrice.toFixed(2)}\n• 24h Change: ${indicators.dailyChange}%\n• Range: $${indicators.dayLow.toFixed(2)} - $${indicators.dayHigh.toFixed(2)}\n• Volume: ${indicators.volume} (${indicators.volume > 14000 ? 'High' : 'Average'})\n\n### Key Technical Levels\n**Support:**\n1. $${indicators.supports[0]} (Intraday)\n2. $${indicators.supports[1]} (Previous consolidation)\n3. $${indicators.supports[2]} (Weekly pivot)\n\n**Resistance:**\n1. $${indicators.resistances[0]} (Current ceiling)\n2. $${indicators.resistances[1]} (Monthly high)\n3. $${indicators.resistances[2]} (Yearly target)\n\n### Indicator Analysis\n• **RSI(14)**: ${indicators.rsi.toFixed(2)} - ${indicators.rsi > 70 ? 'Overbought' : indicators.rsi < 30 ? 'Oversold' : 'Neutral'}\n• **MACD**: ${indicators.macd.toFixed(3)} / Signal: ${indicators.signal.toFixed(3)} - ${indicators.macd > indicators.signal ? 'Bullish' : 'Bearish'} divergence\n• **Moving Averages**: Price ${indicators.currentPrice > indicators.fiftyDayMA ? 'above' : 'below'} 50 MA ($${indicators.fiftyDayMA.toFixed(2)}) and ${indicators.currentPrice > indicators.twoHundredDayMA ? 'above' : 'below'} 200 MA ($${indicators.twoHundredDayMA.toFixed(2)})\n• **Bollinger Bands**: Price testing ${indicators.currentPrice > indicators.fiftyDayMA + 30 ? 'upper' : indicators.currentPrice < indicators.fiftyDayMA - 30 ? 'lower' : 'middle'} band with ${parseFloat(indicators.volatility) > 0.8 ? 'increased' : 'normal'} volatility (ATR ${indicators.volatility})\n\n### Market Insight\nXAUUSD is currently testing the ${indicators.currentPrice > indicators.fiftyDayMA + 30 ? 'upper' : indicators.currentPrice < indicators.fiftyDayMA - 30 ? 'lower' : 'middle'} Bollinger Band with ${parseFloat(indicators.volatility) > 0.8 ? 'heightened' : 'normal'} volatility. OANDA order flow data indicates ${indicators.currentPrice > indicators.prevClose ? 'accumulation' : 'distribution'} at $${indicators.supports[0]}-$${indicators.supports[1]} range. The Commitment of Traders report shows ${indicators.rsi > 60 ? 'increased long positioning' : 'mixed positioning'} among institutional traders.\n\n${indicators.dailyChange > 0 ? 'Inflation concerns and geopolitical tensions continue supporting prices' : 'Dollar strength and profit-taking pressure prices'}, while technical indicators suggest ${indicators.rsi > 70 || indicators.rsi < 30 ? 'potential reversal' : 'continuation of current trend'}. Relative strength against USD appears ${indicators.dailyChange > 0 ? 'strengthening' : 'weakening'} in intraday timeframes.\n\n### Trading Approach\n• **Short-term**: ${indicators.rsi > 70 ? 'Consider profit-taking above $' + indicators.resistances[0] : indicators.rsi < 30 ? 'Look for short-term bounce opportunities' : 'Follow the trend with tight stops'}\n• **Medium-term**: ${indicators.currentPrice > indicators.twoHundredDayMA ? 'Maintain bullish bias, looking for entries near $' + indicators.fibRetracement['50.0%'] + ' level' : 'Exercise caution, watching for stabilization above $' + indicators.supports[1]}\n• **Risk management**: Set stops below $${(indicators.supports[0] - 5).toFixed(2)} to limit potential drawdown\n\nData last updated: ${new Date(indicators.lastUpdated).toLocaleTimeString()}\n\nNote: This is simulated analysis (API connection failed)`
-        };
+        // Generate fallback analysis based on model type
+        const trendEmoji = latestData.trend === 'Bullish' ? '📈' : latestData.trend === 'Bearish' ? '📉' : '➡️';
         
-        // Return the fallback simulated analysis
-        return analyses[model] || `${model} analysis not available`;
+        let fallbackAnalysis = '';
+        if (model === 'GPT-4.1') {
+          fallbackAnalysis = `${trendEmoji} XAUUSD Technical Analysis (Simulated) - ${date} at ${time}\n\nCurrent Price: $${latestData.currentPrice.toFixed(2)} (${latestData.dailyChange}% daily change)\n\nKey Indicators:\n- RSI(14): ${latestData.indicators.rsi.toFixed(2)} (${latestData.indicators.rsi > 70 ? 'Overbought' : latestData.indicators.rsi < 30 ? 'Oversold' : 'Neutral'})\n- MACD: ${latestData.indicators.macd.toFixed(2)} / Signal: ${latestData.indicators.signal.toFixed(2)} (${latestData.indicators.macd > latestData.indicators.signal ? 'Bullish' : 'Bearish'} momentum)\n\nNote: Using fallback analysis due to API error: ${analysisError.message}`;
+        } else if (model === 'Claude 3.7') {
+          fallbackAnalysis = `OANDA XAUUSD Analysis - ${date}\n\nPrice Action Summary (${time}):\nXAUSDU is currently trading at $${latestData.currentPrice.toFixed(2)}, with daily range of $${latestData.dayLow.toFixed(2)}-$${latestData.dayHigh.toFixed(2)}.\n\nNote: Using fallback analysis due to API error: ${analysisError.message}`;
+        } else {
+          fallbackAnalysis = `## XAUUSD OANDA Technical Analysis\nTimestamp: ${date} ${time}\n\n### Current Market Status\n• Price: $${latestData.currentPrice.toFixed(2)}\n• 24h Change: ${latestData.dailyChange}%\n\nNote: Using fallback analysis due to API error: ${analysisError.message}`;
+        }
+        
+        // Update UI with fallback analysis
+        setModelOutputs(prev => ({
+          ...prev,
+          [model]: fallbackAnalysis
+        }));
+        
+        // Reset loading state
+        setLoadingModel('');
       }
+    } catch (error) {
+      console.error(`Error generating ${model} analysis:`, error);
       
-      // Get AI analysis - returns results directly from the try/catch block
-      const analysis = await modelOutput;
-      
-      // Update the UI with the analysis results
+      // Update UI to show error
       setModelOutputs(prev => ({
         ...prev,
-        [model]: analysis
+        [model]: `Error generating ${model} analysis: ${error.message}`
       }));
-    } catch (err) {
-      console.error(`Error during ${model} analysis:`, err);
-      setModelOutputs(prev => ({
-        ...prev,
-        [model]: `Analysis failed: ${err.message || 'Unknown error'}`
-      }));
-    } finally {
+      
+      // Reset loading state
       setLoadingModel('');
     }
   };
@@ -542,6 +695,37 @@ export default function Home() {
           </ErrorBoundary>
         </section>
         
+        {/* Market Overview */}
+        <MarketOverview data={marketData} status={apiStatus} />
+        
+        {/* WebSocket Status */}
+        <div style={{ display: 'flex', marginTop: '10px', justifyContent: 'space-between', alignItems: 'center', padding: '10px', background: wsConnected ? '#f0f8ff' : '#fffdfa', border: `1px solid ${wsConnected ? '#c8e1ff' : '#ffeeba'}`, borderRadius: '4px' }}>
+          <div>
+            <span style={{ fontWeight: 'bold', color: wsConnected ? '#0366d6' : '#856404' }}>
+              Data Source: {isUsingWebSocket ? 'Real-time WebSocket' : 'REST API (Polling)'}
+            </span>
+            <span style={{ marginLeft: '10px', fontSize: '13px', color: '#666' }}>
+              {marketData?.lastUpdated ? `Last update: ${marketData.lastUpdated}` : ''}
+            </span>
+          </div>
+          
+          {!wsConnected && (
+            <button 
+              onClick={wsReconnect}
+              style={{ padding: '5px 10px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              Reconnect WebSocket
+            </button>
+          )}
+        </div>
+        
+        {/* TradingView Chart */}
+        <div style={{marginTop: '20px', border: '1px solid #e0e0e0', borderRadius: '8px', overflow: 'hidden'}}>
+          <ErrorBoundary fallback={<div style={{padding: 20}}>Chart could not be loaded</div>}>
+            <TradingViewWidget />
+          </ErrorBoundary>
+        </div>
+        
         {/* Model analysis section */}
         <section style={{width: '100%', maxWidth: '900px', margin: '0 auto 30px auto'}}>
           <h2 style={{fontSize: 24, fontWeight: 700, marginBottom: 16, color: '#343434', textAlign: 'center'}}>
@@ -576,9 +760,26 @@ export default function Home() {
                   boxSizing: 'border-box',
                   textAlign: 'left',
                   fontFamily: 'monospace',
-                  overflow: 'auto'
+                  overflow: 'auto',
+                  position: 'relative'
                 }}>
                   {modelOutputs[model]}
+                  
+                  {/* Add a small debug indicator showing length of content */}
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '4px',
+                    right: '4px',
+                    background: '#fffbe6',
+                    fontSize: '10px',
+                    padding: '2px 4px',
+                    border: '1px solid #e6c200',
+                    borderRadius: '4px',
+                    color: '#7a6700',
+                    opacity: 0.8
+                  }}>
+                    {modelOutputs[model] ? modelOutputs[model].length : 0} chars
+                  </div>
                 </div>
               </div>
             ))}
@@ -589,6 +790,30 @@ export default function Home() {
         {apiStatus === 'unavailable' && (
           <div style={{ color: '#c22', marginTop: 10, fontSize: 15, background: '#fff8f8', padding: '8px 16px', borderRadius: 6, marginBottom: 20 }}>
             Note: Backend API is currently unavailable. Responses are simulated.
+          </div>
+        )}
+        
+        {/* Debug button row (only in development) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px', marginBottom: '10px' }}>
+            <button 
+              onClick={() => debugSetOutput('GPT-4.1', 'This is a test output for GPT-4.1')}
+              style={{ padding: '5px 10px', background: '#eee', border: '1px solid #ccc', borderRadius: '4px' }}
+            >
+              Test GPT Output
+            </button>
+            <button 
+              onClick={() => debugSetOutput('Claude 3.7', 'This is a test output for Claude 3.7')}
+              style={{ padding: '5px 10px', background: '#eee', border: '1px solid #ccc', borderRadius: '4px' }}
+            >
+              Test Claude Output
+            </button>
+            <button 
+              onClick={() => debugSetOutput('Perplexity Pro', 'This is a test output for Perplexity Pro')}
+              style={{ padding: '5px 10px', background: '#eee', border: '1px solid #ccc', borderRadius: '4px' }}
+            >
+              Test Perplexity Output
+            </button>
           </div>
         )}
         

@@ -3,6 +3,6 @@
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
   "/": "pages/index.js",
-  "/api/market-data": "pages/api/market-data.js",
-  "/api/health": "pages/api/health.js"
+  "/api/health": "pages/api/health.js",
+  "/api/market-data": "pages/api/market-data.js"
 }
