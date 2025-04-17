@@ -1,61 +1,84 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, memo } from 'react';
 
-export default function TradingViewWidget() {
-  const container = useRef();
-
+// Use dynamic import to avoid SSR issues
+const TradingViewWidget = () => {
+  const container = useRef(null);
+  
   useEffect(() => {
-    // Create the widget script
-    const script = document.createElement('script');
-    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-    script.type = 'text/javascript';
-    script.async = true;
+    // Only run on client-side
+    if (typeof window === 'undefined') return;
     
-    // Configure the widget
-    script.innerHTML = JSON.stringify({
-      "autosize": true,
-      "symbol": "OANDA:XAUUSD",
-      "interval": "5",
-      "timezone": "exchange",
-      "theme": "light",
-      "style": "1",
-      "locale": "en",
-      "enable_publishing": false,
-      "gridColor": "rgba(180, 180, 180, 0.14)",
-      "allow_symbol_change": false,
-      "support_host": "https://www.tradingview.com",
-      "calendar": false,
-      "hide_volume": false,
-      "support_resister": false,
-      "backgroundColor": "rgba(255, 255, 255, 1)",
-      "hide_side_toolbar": false,
-      "studies": [
-        "RSI@tv-basicstudies",
-        "MACD@tv-basicstudies",
-        "BB@tv-basicstudies"
-      ],
-      "container_id": "tradingview-widget"
-    });
+    // Clean up any existing widget
+    if (container.current) {
+      while (container.current.firstChild) {
+        container.current.removeChild(container.current.firstChild);
+      }
+    }
+    
+    try {
+      // Create widget container
+      const widgetContainer = document.createElement('div');
+      widgetContainer.className = 'tradingview-widget-container';
+      widgetContainer.style.width = '100%';
+      widgetContainer.style.height = '100%';
 
-    // Add the widget container
-    const widgetContainer = document.createElement('div');
-    widgetContainer.className = 'tradingview-widget-container';
-    widgetContainer.style.width = '100%';
-    widgetContainer.style.height = '400px';
-    widgetContainer.style.maxWidth = '800px';
-    
-    const widget = document.createElement('div');
-    widget.id = 'tradingview-widget';
-    widget.style.width = '100%';
-    widget.style.height = '100%';
-    
-    widgetContainer.appendChild(widget);
-    container.current.appendChild(widgetContainer);
-    container.current.appendChild(script);
+      // Create widget div
+      const widget = document.createElement('div');
+      widget.id = 'tradingview-widget-' + Math.random().toString(36).substring(2, 8); // Unique ID
+      widget.style.width = '100%';
+      widget.style.height = '100%';
+      widgetContainer.appendChild(widget);
+      
+      // Append to container
+      if (container.current) {
+        container.current.appendChild(widgetContainer);
+      }
+      
+      // TradingView widget configuration
+      const config = {
+        "autosize": true,
+        "symbol": "OANDA:XAUUSD",
+        "interval": "5",
+        "timezone": "exchange",
+        "theme": "light",
+        "style": "1",
+        "locale": "en",
+        "enable_publishing": false,
+        "gridColor": "rgba(180, 180, 180, 0.14)",
+        "allow_symbol_change": false,
+        "support_host": "https://www.tradingview.com",
+        "calendar": false,
+        "hide_volume": false,
+        "support_resister": false,
+        "backgroundColor": "rgba(255, 255, 255, 1)",
+        "hide_side_toolbar": false,
+        "studies": [
+          "RSI@tv-basicstudies",
+          "MACD@tv-basicstudies",
+          "BB@tv-basicstudies"
+        ],
+        "container_id": widget.id
+      };
+      
+      // Load TradingView script
+      const script = document.createElement('script');
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+      script.type = 'text/javascript';
+      script.async = true;
+      script.innerHTML = JSON.stringify(config);
+      widgetContainer.appendChild(script);
+      
+      console.log('TradingView widget initialized with ID:', widget.id);
+    } catch (error) {
+      console.error('Error initializing TradingView widget:', error);
+    }
 
     return () => {
       // Cleanup on unmount
-      while (container.current?.firstChild) {
-        container.current.removeChild(container.current.firstChild);
+      if (container.current) {
+        while (container.current.firstChild) {
+          container.current.removeChild(container.current.firstChild);
+        }
       }
     };
   }, []);
@@ -63,12 +86,20 @@ export default function TradingViewWidget() {
   return (
     <div 
       ref={container} 
+      className="trading-view-container"
       style={{
         width: '100%',
-        maxWidth: 800,
-        height: 400,
-        margin: '0 0 32px 0'
+        maxWidth: '100%',
+        height: '500px',
+        margin: '0 auto 32px auto',
+        border: '1px solid #e0e0e0',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        backgroundColor: '#fff'
       }}
     />
   );
-}
+};
+
+// Use memo to prevent unnecessary re-renders
+export default memo(TradingViewWidget);
