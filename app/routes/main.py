@@ -121,7 +121,89 @@ def analyze_gpt4():
 
 @bp.route('/analyze/claude', methods=['POST'])
 def analyze_claude():
-    return _analyze_single_model('claude')
+    """Generate trading strategy analysis using Claude 3.7 Vision API."""
+    logger.info("Received request for /analyze/claude")
+
+    # Lazily initialize the OANDA client
+    client = get_oanda_client()
+    if not client:
+        logger.error("OANDA client initialization failed. Cannot proceed with analysis.")
+        return jsonify({"status": "error", "error": "OANDA client initialization failed."}), 500
+
+    try:
+        # 1. Fetch Market Data
+        logger.info("Fetching latest market data...")
+        instrument = request.json.get('instrument', 'XAU_USD')
+        granularity = request.json.get('granularity', 'M5')
+        count = request.json.get('count', 100)
+        
+        market_data_result = get_latest_market_data(client, instrument, granularity, count)
+        
+        if market_data_result.get("error"):
+            logger.error(f"Error fetching market data: {market_data_result['error']}")
+            return jsonify({"status": "error", "error": f"Failed to fetch market data: {market_data_result['error']}"}), 500
+        
+        market_data = market_data_result["data"]
+        trend_info = market_data_result["trend_info"]
+        structure_points = market_data_result["structure_points"]
+        logger.info("Market data fetched successfully.")
+        
+        # 2. Calculate OTE zone based on trend and structure points
+        ote_zone = None
+        if trend_info.get('direction') in ['Bullish', 'Bearish'] and structure_points.get('swing_highs') and structure_points.get('swing_lows'):
+            try:
+                ote_zone = calculate_ote_zone(trend_info['direction'], structure_points)
+                logger.info(f"OTE zone calculated: {ote_zone.get('entry_price')}")
+            except Exception as e:
+                logger.warning(f"Could not calculate OTE zone: {str(e)}")
+        
+        # 3. Get chart image path if provided
+        chart_image_path = request.json.get('chart_image_path')
+        if chart_image_path and not os.path.exists(chart_image_path):
+            logger.warning(f"Chart image not found at path: {chart_image_path}")
+            chart_image_path = None
+        
+        # 4. Generate strategy analysis using Claude 3.7
+        logger.info("Generating strategy analysis with Claude 3.7...")
+        from app.utils.ai_analysis_claude import generate_strategy_analysis_claude
+        
+        analysis_result = generate_strategy_analysis_claude(
+            trend_info=trend_info,
+            structure_points=structure_points,
+            ote_zone=ote_zone,
+            chart_image_path=chart_image_path
+        )
+        
+        # 5. Prepare and return response
+        if analysis_result.get('status') == 'success':
+            logger.info(f"Strategy analysis generated successfully in {analysis_result.get('elapsed_time', 0):.2f}s")
+            return jsonify({
+                "status": "success",
+                "data": {
+                    "trend_info": trend_info,
+                    "structure_points": structure_points,
+                    "ote_zone": ote_zone,
+                    "analysis": analysis_result.get('analysis'),
+                    "model": analysis_result.get('model'),
+                    "elapsed_time": analysis_result.get('elapsed_time')
+                }
+            })
+        else:
+            logger.error(f"Error generating Claude analysis: {analysis_result.get('analysis')}")
+            return jsonify({
+                "status": "error",
+                "error": analysis_result.get('analysis', "Unknown error generating Claude analysis")
+            }), 500
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"An unexpected error occurred during Claude analysis: {error_message}", exc_info=True)
+        
+        return jsonify({
+            "status": "error", 
+            "error": f"An internal server error occurred: {error_message}",
+            "error_type": type(e).__name__
+        }), 500
 
 @bp.route('/analyze/perplexity', methods=['POST'])
 def analyze_perplexity():

@@ -61,6 +61,9 @@ MODEL_NAME_OPENAI = get_env_var('MODEL_NAME_OPENAI', 'gpt-4-vision-preview')
 MAX_RETRIES = int(get_env_var('MAX_RETRIES', '3'))
 RETRY_DELAY = int(get_env_var('RETRY_DELAY', '2'))  # seconds
 
+# Claude API Configuration
+CLAUDE_MODEL_NAME = get_env_var('CLAUDE_MODEL_NAME', 'claude-3-sonnet-20240229')
+
 def validate_requesty_settings():
     """Validate Requesty-specific settings."""
     if not ROUTER_API_KEY:

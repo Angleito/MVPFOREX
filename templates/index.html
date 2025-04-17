@@ -41,7 +41,8 @@
         <div class="row mb-4">
             <div class="col text-center">
                 <button id="analyzeBtn" class="btn btn-primary btn-lg me-2">Analyze with All Models</button>
-                <button id="analyzeChatGPTBtn" class="btn btn-success btn-lg">Analyze with ChatGPT 4.1</button>
+                <button id="analyzeChatGPTBtn" class="btn btn-success btn-lg me-2">Analyze with ChatGPT 4.1</button>
+                <button id="analyzeClaudeBtn" class="btn btn-info btn-lg">Analyze with Claude 3.7</button>
             </div>
         </div>
 
@@ -84,6 +85,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         const analyzeBtn = document.getElementById('analyzeBtn');
         const analyzeChatGPTBtn = document.getElementById('analyzeChatGPTBtn');
+        const analyzeClaudeBtn = document.getElementById('analyzeClaudeBtn');
         const loadingOverlay = document.getElementById('loading');
         const resultsDiv = document.getElementById('results');
 
@@ -91,6 +93,7 @@
             loadingOverlay.style.display = 'flex';
             analyzeBtn.disabled = true;
             analyzeChatGPTBtn.disabled = true;
+            analyzeClaudeBtn.disabled = true;
             resultsDiv.classList.add('d-none');
         }
 
@@ -98,6 +101,7 @@
             loadingOverlay.style.display = 'none';
             analyzeBtn.disabled = false;
             analyzeChatGPTBtn.disabled = false;
+            analyzeClaudeBtn.disabled = false;
         }
 
         function clearResults() {
@@ -153,6 +157,12 @@
             // Handle ChatGPT response format which is different
             if (endpoint === '/analyze/chatgpt41') {
                 displayChatGPTAnalysis(data);
+                return;
+            }
+            
+            // Handle Claude response format
+            if (endpoint === '/analyze/claude') {
+                displayClaudeAnalysis(data);
                 return;
             }
             
@@ -271,6 +281,68 @@
             resultsDiv.classList.remove('d-none');
         }
 
+        function displayClaudeAnalysis(data) {
+            const resultsContent = document.createElement('div');
+            resultsContent.className = 'row';
+
+            // Create market overview section similar to ChatGPT analysis
+            const marketOverview = document.createElement('div');
+            marketOverview.className = 'col-md-12 mb-4';
+            marketOverview.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Market Overview</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h6>Trend Information</h6>
+                                <p><strong>Direction:</strong> ${data.trend_info?.direction || 'Unknown'}</p>
+                                <p><strong>Strength:</strong> ${data.trend_info?.strength || 'Unknown'}</p>
+                                <p><strong>Current Price:</strong> $${data.trend_info?.current_price?.toFixed(2) || 'Unknown'}</p>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Moving Averages</h6>
+                                <p><strong>SMA 20:</strong> $${data.trend_info?.sma20 ? data.trend_info.sma20.toFixed(2) : 'N/A'}</p>
+                                <p><strong>SMA 50:</strong> $${data.trend_info?.sma50 ? data.trend_info.sma50.toFixed(2) : 'N/A'}</p>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Fibonacci Entry</h6>
+                                ${data.ote_zone && data.ote_zone.entry_price ? `
+                                <p><strong>Entry Price:</strong> $${data.ote_zone.entry_price.toFixed(2)}</p>
+                                <p><strong>Stop Loss:</strong> $${data.ote_zone.stop_loss.toFixed(2)}</p>
+                                <p><strong>Take Profit 1:</strong> $${data.ote_zone.take_profit1.toFixed(2)}</p>
+                                ` : '<p>No Fibonacci levels available</p>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            resultsContent.appendChild(marketOverview);
+            
+            // Create Claude analysis section
+            const analysisContent = document.createElement('div');
+            analysisContent.className = 'col-md-12 mb-4';
+            analysisContent.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Claude 3.7 Analysis</h5>
+                        <small class="text-muted">${data.model || 'Claude 3.7 Sonnet'}</small>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">${data.analysis ? data.analysis.replace(/\n/g, '<br>') : 'No analysis available'}</p>
+                        <div class="text-end mt-3">
+                            <small class="text-muted">Analysis time: ${data.elapsed_time ? data.elapsed_time.toFixed(2) : '?'}s</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+            resultsContent.appendChild(analysisContent);
+            
+            resultsDiv.appendChild(resultsContent);
+            resultsDiv.classList.remove('d-none');
+        }
+
         function getModelDisplayName(model) {
             const modelDisplayNames = {
                 'gpt4': 'GPT-4.1',
@@ -286,6 +358,10 @@
 
         if (analyzeChatGPTBtn) {
             analyzeChatGPTBtn.addEventListener('click', () => fetchAnalysis('/analyze/chatgpt41'));
+        }
+
+        if (analyzeClaudeBtn) {
+            analyzeClaudeBtn.addEventListener('click', () => fetchAnalysis('/analyze/claude'));
         }
     });
     </script>
