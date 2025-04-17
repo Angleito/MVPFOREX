@@ -40,7 +40,8 @@
         
         <div class="row mb-4">
             <div class="col text-center">
-                <button id="analyzeBtn" class="btn btn-primary btn-lg">Analyze Current Market</button>
+                <button id="analyzeBtn" class="btn btn-primary btn-lg me-2">Analyze with All Models</button>
+                <button id="analyzeChatGPTBtn" class="btn btn-success btn-lg">Analyze with ChatGPT 4.1</button>
             </div>
         </div>
 
@@ -82,18 +83,21 @@
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const analyzeBtn = document.getElementById('analyzeBtn');
+        const analyzeChatGPTBtn = document.getElementById('analyzeChatGPTBtn');
         const loadingOverlay = document.getElementById('loading');
         const resultsDiv = document.getElementById('results');
 
         function showLoading() {
             loadingOverlay.style.display = 'flex';
             analyzeBtn.disabled = true;
+            analyzeChatGPTBtn.disabled = true;
             resultsDiv.classList.add('d-none');
         }
 
         function hideLoading() {
             loadingOverlay.style.display = 'none';
             analyzeBtn.disabled = false;
+            analyzeChatGPTBtn.disabled = false;
         }
 
         function clearResults() {
@@ -101,16 +105,20 @@
             resultsDiv.classList.add('d-none');
         }
 
-        async function fetchAnalysis() {
+        async function fetchAnalysis(endpoint = '/analyze') {
             try {
                 clearResults();
                 showLoading();
 
-                const response = await fetch('/analyze', {
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    body: JSON.stringify({
+                        instrument: 'XAU_USD',
+                        granularity: 'M5'
+                    })
                 });
 
                 if (!response.ok) {
@@ -119,8 +127,8 @@
 
                 const data = await response.json();
                 
-                if (data.status === 'completed' && data.data) {
-                    displayResults(data.data);
+                if ((data.status === 'completed' || data.status === 'success') && data.data) {
+                    displayResults(data.data, endpoint);
                 } else if (data.status === 'error') {
                     throw new Error(data.error || 'Analysis failed');
                 } else {
@@ -139,9 +147,16 @@
             }
         }
 
-        function displayResults(data) {
+        function displayResults(data, endpoint) {
             resultsDiv.innerHTML = '<h2 class="text-center mb-4">Analysis Results</h2>';
             
+            // Handle ChatGPT response format which is different
+            if (endpoint === '/analyze/chatgpt41') {
+                displayChatGPTAnalysis(data);
+                return;
+            }
+            
+            // Handle standard multi-model response format
             if (data && Object.keys(data).length > 0) {
                 const resultsContent = document.createElement('div');
                 resultsContent.className = 'row';
@@ -193,6 +208,68 @@
             
             resultsDiv.classList.remove('d-none');
         }
+        
+        function displayChatGPTAnalysis(data) {
+            const resultsContent = document.createElement('div');
+            resultsContent.className = 'row';
+
+            // Create market overview section
+            const marketOverview = document.createElement('div');
+            marketOverview.className = 'col-md-12 mb-4';
+            marketOverview.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Market Overview</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h6>Trend Information</h6>
+                                <p><strong>Direction:</strong> ${data.trend_info.direction}</p>
+                                <p><strong>Strength:</strong> ${data.trend_info.strength}</p>
+                                <p><strong>Current Price:</strong> $${data.trend_info.current_price.toFixed(2)}</p>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Moving Averages</h6>
+                                <p><strong>SMA 20:</strong> $${data.trend_info.sma20 ? data.trend_info.sma20.toFixed(2) : 'N/A'}</p>
+                                <p><strong>SMA 50:</strong> $${data.trend_info.sma50 ? data.trend_info.sma50.toFixed(2) : 'N/A'}</p>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Fibonacci Entry</h6>
+                                ${data.ote_zone && data.ote_zone.entry_price ? `
+                                <p><strong>Entry Price:</strong> $${data.ote_zone.entry_price.toFixed(2)}</p>
+                                <p><strong>Stop Loss:</strong> $${data.ote_zone.stop_loss.toFixed(2)}</p>
+                                <p><strong>Take Profit 1:</strong> $${data.ote_zone.take_profit1.toFixed(2)}</p>
+                                ` : '<p>No Fibonacci levels available</p>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            resultsContent.appendChild(marketOverview);
+            
+            // Create ChatGPT analysis section
+            const analysisContent = document.createElement('div');
+            analysisContent.className = 'col-md-12 mb-4';
+            analysisContent.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">ChatGPT 4.1 Analysis</h5>
+                        <small class="text-muted">${data.model}</small>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">${data.analysis.replace(/\n/g, '<br>')}</p>
+                        <div class="text-end mt-3">
+                            <small class="text-muted">Analysis time: ${data.elapsed_time.toFixed(2)}s</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+            resultsContent.appendChild(analysisContent);
+            
+            resultsDiv.appendChild(resultsContent);
+            resultsDiv.classList.remove('d-none');
+        }
 
         function getModelDisplayName(model) {
             const modelDisplayNames = {
@@ -204,7 +281,11 @@
         }
 
         if (analyzeBtn) {
-            analyzeBtn.addEventListener('click', fetchAnalysis);
+            analyzeBtn.addEventListener('click', () => fetchAnalysis('/analyze'));
+        }
+
+        if (analyzeChatGPTBtn) {
+            analyzeChatGPTBtn.addEventListener('click', () => fetchAnalysis('/analyze/chatgpt41'));
         }
     });
     </script>

@@ -319,12 +319,22 @@ def get_multi_model_analysis(
                 chart_image_path,
                 model_type
             )
-            
             logger.info(f"Successfully generated analysis for {model_type}")
-            results[model_type] = {
-                'analysis': analysis,
-                'model': MODELS[model_type]['id']
-            }
+            # Always return a string for 'analysis' (not a dict)
+            if isinstance(analysis, dict) and 'analysis' in analysis:
+                results[model_type] = {
+                    'analysis': analysis['analysis'],
+                    'model': MODELS[model_type]['id']
+                }
+                if 'elapsed_time' in analysis:
+                    results[model_type]['elapsed_time'] = analysis['elapsed_time']
+                if 'status' in analysis and analysis['status'] != 'success':
+                    results[model_type]['error'] = analysis.get('analysis', 'Unknown error')
+            else:
+                results[model_type] = {
+                    'analysis': str(analysis),
+                    'model': MODELS[model_type]['id']
+                }
         except Exception as e:
             logger.error(f"Error generating analysis for {model_type}: {str(e)}", exc_info=True)
             results[model_type] = {
