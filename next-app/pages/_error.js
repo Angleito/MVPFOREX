@@ -1,6 +1,7 @@
 import React from 'react';
+import Error from 'next/error';
 
-function Error({ statusCode }) {
+function CustomError({ statusCode }) {
   return (
     <div style={{
       display: 'flex',
@@ -39,9 +40,11 @@ function Error({ statusCode }) {
   );
 }
 
-Error.getInitialProps = ({ res, err }) => {
+CustomError.getInitialProps = ({ res, err }) => {
+  // When Error is imported from 'next/error' this ensures pages with
+  // getInitialProps work properly with error handling
   const statusCode = res ? res.statusCode : err ? err.statusCode : 404;
   return { statusCode };
 };
 
-export default Error;
+export default CustomError;
