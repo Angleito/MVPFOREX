@@ -82,3 +82,8 @@ instance/
 
 # Keep the .vercel directory but ignore output
 .vercel/output
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

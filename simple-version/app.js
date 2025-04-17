@@ -5,8 +5,9 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     // Configuration
-    const API_URL = 'http://localhost:3000';
-    const FALLBACK_API_URL = 'https://mvpforex-api.vercel.app';
+    // Use AWS EB backend by default, fallback to localhost for local dev
+    const API_URL = window?.ENV?.API_URL || window.API_URL || 'https://MVPFOREX-dev.us-east-2.elasticbeanstalk.com';
+    const FALLBACK_API_URL = window?.ENV?.FALLBACK_API_URL || window.FALLBACK_API_URL || 'http://localhost:3000';
     const REFRESH_INTERVAL = 60000; // 1 minute fallback polling interval
     const RECONNECT_TIMEOUT = 5000; // 5 seconds reconnect timeout
     const SIMULATE_PRICE_CHANGES = true; // Enable price simulation when API unavailable

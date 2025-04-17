@@ -134,12 +134,20 @@ app.get('/api/health', (req, res) => {
 });
 
 const fetch = require('node-fetch');
+const { getCachedAnalysis, setCachedAnalysis } = require('./analysisCache');
+
 app.post('/api/analyze/:model', express.json(), async (req, res) => {
   const model = req.params.model;
   const marketData = req.body.market_data || {};
   const price = marketData.currentPrice || 2400;
   const trend = marketData.trend || 'Neutral';
   const rsi = marketData.rsi || 50;
+
+  // 1. Try cache first
+  const cached = getCachedAnalysis(model, price, trend, rsi);
+  if (cached) {
+    return res.json({ status: 'cached', analysis: cached });
+  }
 
   let analysis = '';
   let usedApi = false;
@@ -202,6 +210,9 @@ app.post('/api/analyze/:model', express.json(), async (req, res) => {
   if (!analysis) {
     analysis = generateSimulatedAnalysis(model, marketData);
   }
+
+  // 2. Save to cache
+  setCachedAnalysis(model, price, trend, rsi, analysis);
 
   res.json({
     status: usedApi ? 'success' : 'fallback',
