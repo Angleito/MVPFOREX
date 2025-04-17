@@ -56,6 +56,11 @@ DEFAULT_MODEL = MODELS['gpt4']['id']
 MAX_TOKENS = MODELS['gpt4']['max_tokens']
 TEMPERATURE = MODELS['gpt4']['temperature']
 
+# OpenAI API Configuration
+MODEL_NAME_OPENAI = get_env_var('MODEL_NAME_OPENAI', 'gpt-4-vision-preview')
+MAX_RETRIES = int(get_env_var('MAX_RETRIES', '3'))
+RETRY_DELAY = int(get_env_var('RETRY_DELAY', '2'))  # seconds
+
 def validate_requesty_settings():
     """Validate Requesty-specific settings."""
     if not ROUTER_API_KEY:

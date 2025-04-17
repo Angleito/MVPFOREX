@@ -54,6 +54,151 @@ def generate_analysis(
     chart_image_path: Optional[str] = None,
     model_type: str = 'gpt4'
 ):
+    """
+    Generate trading analysis using the specified vision model (OpenAI, Claude, or Perplexity).
+    Uses advanced prompt engineering for each model. Handles image input and robust error handling.
+    Returns consistent output format for all models.
+    """
+    import importlib
+    logger.info(f"Generating analysis with model: {model_type}")
+    try:
+        client = get_ai_client()
+        model_config = MODELS.get(model_type, MODELS['gpt4'])
+        # Use specialized prompt logic for each model
+        if model_type == 'gpt4':
+            # Use ai_analysis.py logic for OpenAI
+            ai_analysis = importlib.import_module('app.utils.ai_analysis')
+            ote_zone = None
+            if hasattr(ai_analysis, 'calculate_ote_zone'):
+                try:
+                    ote_zone = ai_analysis.calculate_ote_zone(trend_info.get('direction', ''), structure_points)
+                except Exception:
+                    ote_zone = None
+            result = ai_analysis.generate_strategy_analysis(
+                trend_info,
+                structure_points,
+                ote_zone=ote_zone,
+                chart_image_path=chart_image_path
+            )
+            # Ensure output is consistent
+            if isinstance(result, dict):
+                return result
+            else:
+                return {"status": "success", "analysis": str(result), "model": model_config['id']}
+        elif model_type == 'claude':
+            # Claude prompt engineering
+            prompt = f"""
+You are an expert trading analyst specializing in Fibonacci OTE strategies for gold (XAUUSD).
+Analyze the following market data and structure points:
+Current Price: ${trend_info.get('current_price', 'N/A')}
+Trend: {trend_info.get('direction', 'Unknown')} ({trend_info.get('strength', 'Unknown')})
+Swing Highs: {[f'${h["price"]} at {h["time"]}' for h in structure_points['swing_highs']]}
+Swing Lows: {[f'${l["price"]} at {l["time"]}' for l in structure_points['swing_lows']]}
+Please provide:
+- Technical analysis
+- Fibonacci retracement levels
+- Trade setup (entry, stop loss, take profit)
+- Risk management advice
+"""
+            content = [{"type": "text", "text": prompt}]
+            if chart_image_path:
+                try:
+                    base64_image = encode_image(chart_image_path)
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        }
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing chart image: {str(e)}", exc_info=True)
+                    raise Exception(f"Error processing chart image: {str(e)}")
+            messages = [
+                {"role": "user", "content": content}
+            ]
+            start_time = time.time()
+            try:
+                response = client.chat.completions.create(
+                    model=model_config['id'],
+                    messages=messages,
+                    max_tokens=model_config['max_tokens'],
+                    temperature=model_config['temperature']
+                )
+                elapsed = time.time() - start_time
+                if not response.choices:
+                    raise Exception("No response choices found")
+                return {
+                    "status": "success",
+                    "analysis": response.choices[0].message.content,
+                    "elapsed_time": elapsed,
+                    "model": model_config['id']
+                }
+            except Exception as e:
+                logger.error(f"Claude API error: {str(e)}", exc_info=True)
+                return {
+                    "status": "error",
+                    "analysis": f"Claude error: {str(e)}",
+                    "model": model_config['id']
+                }
+        elif model_type == 'perplexity':
+            # Perplexity prompt engineering
+            prompt = f"""
+You are a trading advisor. Analyze XAUUSD market data:
+Current Price: ${trend_info.get('current_price', 'N/A')}
+Trend: {trend_info.get('direction', 'Unknown')} ({trend_info.get('strength', 'Unknown')})
+Swing Highs: {[f'${h["price"]} at {h["time"]}' for h in structure_points['swing_highs']]}
+Swing Lows: {[f'${l["price"]} at {l["time"]}' for l in structure_points['swing_lows']]}
+Provide:
+1. Technical analysis
+2. Fibonacci levels
+3. Entry/SL/TP
+4. Risk management
+"""
+            content = [{"type": "text", "text": prompt}]
+            if chart_image_path:
+                try:
+                    base64_image = encode_image(chart_image_path)
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        }
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing chart image: {str(e)}", exc_info=True)
+                    raise Exception(f"Error processing chart image: {str(e)}")
+            messages = [
+                {"role": "user", "content": content}
+            ]
+            start_time = time.time()
+            try:
+                response = client.chat.completions.create(
+                    model=model_config['id'],
+                    messages=messages,
+                    max_tokens=model_config['max_tokens'],
+                    temperature=model_config['temperature']
+                )
+                elapsed = time.time() - start_time
+                if not response.choices:
+                    raise Exception("No response choices found")
+                return {
+                    "status": "success",
+                    "analysis": response.choices[0].message.content,
+                    "elapsed_time": elapsed,
+                    "model": model_config['id']
+                }
+            except Exception as e:
+                logger.error(f"Perplexity API error: {str(e)}", exc_info=True)
+                return {
+                    "status": "error",
+                    "analysis": f"Perplexity error: {str(e)}",
+                    "model": model_config['id']
+                }
+        else:
+            return {"status": "error", "analysis": f"Unknown model_type: {model_type}", "model": model_type}
+    except Exception as e:
+        logger.error(f"Error in generate_analysis for {model_type}: {str(e)}", exc_info=True)
+        return {"status": "error", "analysis": str(e), "model": model_type}
     """Generate trading analysis using the specified vision model through Requesty.
     
     Args:
