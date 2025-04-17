@@ -3,12 +3,15 @@ import os
 import uuid
 import logging
 import time
+from datetime import datetime
+from typing import Dict, Any, Optional
 from flask import Blueprint, render_template, jsonify, request, current_app
 from dotenv import load_dotenv
 from app.utils.ai_client import get_multi_model_analysis
 from app.utils.market_data import get_latest_market_data
 from app.utils.ai_analysis import generate_strategy_analysis
 from app.utils.market_analysis import calculate_ote_zone
+from app.utils.validators import validate_analysis_request, rate_limit
 
 # Load environment variables
 load_dotenv()
@@ -79,58 +82,45 @@ def index():
 from app.utils.ai_client import generate_analysis
 
 @bp.route('/analyze', methods=['POST'])
+@rate_limit
 def analyze():
-    """Fetch data and run analysis for all models or a specific model based on request."""
-    logger.info("Received request for /analyze endpoint")
+    """Fetch data and run analysis for all models."""
+    logger.info("Received request for /analyze (all models)")
+    
+    # Validate request data
+    validation_error = validate_analysis_request(request.json)
+    if (validation_error):
+        return jsonify({"status": "error", "error": validation_error['error']}), 400
+    
     client = get_oanda_client()
     if not client:
         logger.error("OANDA client initialization failed. Cannot proceed with analysis.")
         return jsonify({"status": "error", "error": "OANDA client initialization failed."}), 500
+        
     try:
-        # Parse request body
-        req_json = request.get_json(force=True, silent=True) or {}
-        model = req_json.get('model')
-        instrument = req_json.get('instrument', "XAU_USD")
-        granularity = req_json.get('granularity', "H1")
-        count = req_json.get('count', 100)
-        chart_image_path = req_json.get('chart_image_path')
-
-        # Fetch market data
+        instrument = request.json.get('instrument', 'XAU_USD')
+        granularity = request.json.get('granularity', 'H1')
+        count = request.json.get('count', 100)
         market_data_result = get_latest_market_data(client, instrument, granularity, count)
-        if market_data_result.get("error"):
+        
+        if (market_data_result.get("error")):
             logger.error(f"Error fetching market data: {market_data_result['error']}")
             return jsonify({"status": "error", "error": f"Failed to fetch market data: {market_data_result['error']}"}), 500
+            
         market_data = market_data_result["data"]
         trend_info = market_data_result["trend_info"]
         structure_points = market_data_result["structure_points"]
         logger.info("Market data fetched successfully.")
-
-        # If a specific model is requested
-        if model:
-            logger.info(f"Running analysis for model: {model}")
-            from app.utils.ai_client import analyze_single_model
-            try:
-                result = analyze_single_model(
-                    model=model,
-                    market_data=market_data,
-                    trend_info=trend_info,
-                    structure_points=structure_points,
-                    chart_image_path=chart_image_path
-                )
-                return jsonify({"status": "ok", "result": result})
-            except Exception as e:
-                logger.error(f"Error analyzing with model {model}: {str(e)}", exc_info=True)
-                return jsonify({"status": "error", "error": f"Failed to analyze with model {model}: {str(e)}"}), 500
-
-        # Otherwise, analyze all models
+        
         logger.info("Starting AI analysis for all models")
-        from app.utils.ai_client import get_multi_model_analysis
         analysis_results = get_multi_model_analysis(
             market_data=market_data,
             trend_info=trend_info,
-            structure_points=structure_points
+            structure_points=structure_points,
+            chart_image_path=request.json.get('chart_image_path')
         )
         return jsonify({"status": "completed", "data": analysis_results})
+        
     except Exception as e:
         error_message = str(e)
         logger.error(f"An unexpected error occurred during analysis: {error_message}", exc_info=True)
@@ -142,13 +132,28 @@ def analyze():
 
 # Per-model endpoints for direct LLM analysis
 @bp.route('/analyze/gpt4', methods=['POST'])
+@rate_limit
 def analyze_gpt4():
+    """Generate trading strategy analysis using GPT-4."""
+    logger.info("Received request for /analyze/gpt4")
+    
+    # Validate request data
+    validation_error = validate_analysis_request(request.json)
+    if validation_error:
+        return jsonify({"status": "error", "error": validation_error['error']}), 400
+    
     return _analyze_single_model('gpt4')
 
 @bp.route('/analyze/claude', methods=['POST'])
+@rate_limit
 def analyze_claude():
     """Generate trading strategy analysis using Claude 3.7 Vision API."""
     logger.info("Received request for /analyze/claude")
+
+    # Validate request data
+    validation_error = validate_analysis_request(request.json)
+    if validation_error:
+        return jsonify({"status": "error", "error": validation_error['error']}), 400
 
     # Lazily initialize the OANDA client
     client = get_oanda_client()
@@ -232,9 +237,15 @@ def analyze_claude():
         }), 500
 
 @bp.route('/analyze/perplexity', methods=['POST'])
+@rate_limit
 def analyze_perplexity():
     """Generate trading strategy analysis using Perplexity Vision API."""
     logger.info("Received request for /analyze/perplexity")
+
+    # Validate request data
+    validation_error = validate_analysis_request(request.json)
+    if validation_error:
+        return jsonify({"status": "error", "error": validation_error['error']}), 400
 
     # Lazily initialize the OANDA client
     client = get_oanda_client()
@@ -317,45 +328,16 @@ def analyze_perplexity():
             "error_type": type(e).__name__
         }), 500
 
-def _analyze_single_model(model_type):
-    logger.info(f"Received request for /analyze/{model_type}")
-    client = get_oanda_client()
-    if not client:
-        logger.error("OANDA client initialization failed. Cannot proceed with analysis.")
-        return jsonify({"status": "error", "error": "OANDA client initialization failed."}), 500
-    try:
-        instrument = "XAU_USD"
-        granularity = "H1"
-        count = 100
-        market_data_result = get_latest_market_data(client, instrument, granularity, count)
-        if market_data_result.get("error"):
-            logger.error(f"Error fetching market data: {market_data_result['error']}")
-            return jsonify({"status": "error", "error": f"Failed to fetch market data: {market_data_result['error']}"}), 500
-        market_data = market_data_result["data"]
-        trend_info = market_data_result["trend_info"]
-        structure_points = market_data_result["structure_points"]
-        logger.info(f"Market data fetched successfully for {model_type}.")
-        logger.info(f"Starting AI analysis for model: {model_type}")
-        analysis_result = generate_analysis(
-            market_data=market_data,
-            trend_info=trend_info,
-            structure_points=structure_points,
-            model_type=model_type
-        )
-        return jsonify({"status": "completed", "data": analysis_result})
-    except Exception as e:
-        error_message = str(e)
-        logger.error(f"Error during analysis for {model_type}: {error_message}", exc_info=True)
-        return jsonify({
-            "status": "error", 
-            "error": f"An internal server error occurred: {error_message}",
-            "error_type": type(e).__name__
-        }), 500
-
 @bp.route('/analyze/chatgpt41', methods=['POST'])
+@rate_limit
 def analyze_chatgpt41():
     """Generate trading strategy analysis using ChatGPT 4.1 Vision API."""
     logger.info("Received request for /analyze/chatgpt41")
+
+    # Validate request data
+    validation_error = validate_analysis_request(request.json)
+    if validation_error:
+        return jsonify({"status": "error", "error": validation_error['error']}), 400
 
     # Lazily initialize the OANDA client
     client = get_oanda_client()
@@ -436,271 +418,166 @@ def analyze_chatgpt41():
             "error_type": type(e).__name__
         }), 500
 
-@bp.route('/upload-chart', methods=['POST'])
-def upload_chart():
-    """Upload a chart image for analysis.
-    
-    Expects a file with the key 'chart' in the request.
-    Returns a JSON object with the path to the uploaded image.
-    """
-    logger.info("Received chart image upload request")
-    
-    if 'chart' not in request.files:
-        logger.error("No chart file in request")
-        return jsonify({
-            "status": "error",
-            "error": "No chart file uploaded"
-        }), 400
-    
-    chart_file = request.files['chart']
-    
-    if chart_file.filename == '':
-        logger.error("Empty chart filename")
-        return jsonify({
-            "status": "error",
-            "error": "No chart file selected"
-        }), 400
-    
-    # Check if the file is an allowed image type
-    allowed_extensions = {'png', 'jpg', 'jpeg', 'gif'}
-    if not ('.' in chart_file.filename and chart_file.filename.rsplit('.', 1)[1].lower() in allowed_extensions):
-        logger.error(f"Invalid chart file type: {chart_file.filename}")
-        return jsonify({
-            "status": "error",
-            "error": "Invalid file type. Allowed types: png, jpg, jpeg, gif"
-        }), 400
-    
+@bp.route('/api/feedback', methods=['POST'])
+@rate_limit
+def submit_feedback():
+    """Submit user feedback for analysis."""
     try:
-        # Create uploads directory if it doesn't exist
-        upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads')
-        if not os.path.exists(upload_dir):
-            os.makedirs(upload_dir)
+        feedback_data = request.json
+        if not feedback_data:
+            return jsonify({"status": "error", "error": "No feedback data provided"}), 400
+            
+        required_fields = ['modelType', 'rating', 'analysisText']
+        missing_fields = [field for field in required_fields if field not in feedback_data]
         
-        # Generate a unique filename with timestamp
-        filename = f"{int(time.time())}_{uuid.uuid4().hex}.{chart_file.filename.rsplit('.', 1)[1].lower()}"
-        filepath = os.path.join(upload_dir, filename)
+        if missing_fields:
+            return jsonify({
+                "status": "error", 
+                "error": f"Missing required fields: {', '.join(missing_fields)}"
+            }), 400
+            
+        # Store feedback in database or file
+        feedback_id = str(uuid.uuid4())
+        feedback_data['id'] = feedback_id
+        feedback_data['timestamp'] = feedback_data.get('timestamp', datetime.utcnow().isoformat())
         
-        # Save the file
-        chart_file.save(filepath)
-        logger.info(f"Chart image saved to {filepath}")
+        # Log feedback
+        logger.info(f"Received feedback for {feedback_data['modelType']}: Rating={feedback_data.get('rating')}")
+        
+        # Store in Redis if available
+        if current_app.redis_client:
+            try:
+                feedback_key = f"feedback:{feedback_id}"
+                current_app.redis_client.hset(
+                    feedback_key,
+                    mapping={
+                        'model_type': feedback_data['modelType'],
+                        'rating': str(feedback_data['rating']),
+                        'comment': feedback_data.get('comment', ''),
+                        'analysis_text': feedback_data['analysisText'],
+                        'timestamp': feedback_data['timestamp']
+                    }
+                )
+                current_app.redis_client.expire(feedback_key, 60 * 60 * 24 * 7)  # 7 days TTL
+            except Exception as e:
+                logger.error(f"Error storing feedback in Redis: {str(e)}")
         
         return jsonify({
             "status": "success",
-            "chart_image_path": filepath
+            "message": "Feedback submitted successfully",
+            "feedback_id": feedback_id
         })
-    
+        
     except Exception as e:
         error_message = str(e)
-        logger.error(f"Error processing chart upload: {error_message}", exc_info=True)
+        logger.error(f"Error processing feedback: {error_message}", exc_info=True)
         return jsonify({
             "status": "error",
-            "error": f"Error processing chart upload: {error_message}"
+            "error": "Failed to process feedback"
         }), 500
 
-@bp.route('/api/info', methods=['GET'])
-def api_info():
-    """Get information about the API, including available models and versions.
-    
-    Returns a JSON object with information about the API, including:
-    - API version
-    - Available models
-    - Model capabilities
-    - Server information
-    """
-    logger.info("Request for API information")
-    
-    import platform
-    import sys
-    
+@bp.route('/api/candles', methods=['POST'])
+@rate_limit
+def get_candles():
+    """Fetch candlestick data for charting."""
     try:
-        api_info = {
-            "api_version": "1.0.0",
-            "name": "MVPFOREX API",
-            "description": "AI Trading Strategy Advisors for XAUUSD (Gold)",
-            "models": {
-                model_name: {
-                    "id": model_info['id'],
-                    "max_tokens": model_info['max_tokens'],
-                    "temperature": model_info['temperature'],
-                    "capabilities": [
-                        "text_analysis",
-                        "chart_vision" if model_name in ['gpt4', 'claude', 'perplexity'] else None,
-                        "fibonacci_strategies"
-                    ],
-                    "endpoint": f"/analyze/{model_name}"
-                }
-                for model_name, model_info in MODELS.items()
-            },
-            "global_endpoint": "/analyze",
-            "allowed_instruments": ["XAU_USD"],
-            "server_info": {
-                "python_version": sys.version,
-                "platform": platform.platform(),
-                "timestamp": time.time()
-            }
-        }
+        # Validate request
+        if not request.json:
+            return jsonify({"status": "error", "error": "No data provided"}), 400
+            
+        instrument = request.json.get('instrument')
+        if not instrument:
+            return jsonify({"status": "error", "error": "No instrument specified"}), 400
+            
+        granularity = request.json.get('granularity', 'H1')
+        if granularity not in ['M5', 'M15', 'M30', 'H1', 'H4', 'D']:
+            return jsonify({
+                "status": "error", 
+                "error": "Invalid granularity. Must be one of: M5, M15, M30, H1, H4, D"
+            }), 400
+            
+        count = request.json.get('count', 100)
+        try:
+            count = int(count)
+            if count < 1 or count > 5000:
+                return jsonify({"status": "error", "error": "Count must be between 1 and 5000"}), 400
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "error": "Invalid count value"}), 400
+            
+        # Get OANDA client
+        client = get_oanda_client()
+        if not client:
+            return jsonify({
+                "status": "error",
+                "error": "Failed to initialize market data client"
+            }), 500
+            
+        # Fetch candles
+        market_data_result = get_latest_market_data(client, instrument, granularity, count)
+        if market_data_result.get("error"):
+            return jsonify({
+                "status": "error",
+                "error": f"Failed to fetch market data: {market_data_result['error']}"
+            }), 500
+            
+        # Format candles for chart.js
+        candles = []
+        for candle in market_data_result["data"]["candles"]:
+            candles.append({
+                "timestamp": candle["time"],
+                "open": float(candle["o"]),
+                "high": float(candle["h"]),
+                "low": float(candle["l"]),
+                "close": float(candle["c"]),
+                "volume": float(candle.get("volume", 0))
+            })
+            
+        return jsonify({
+            "status": "ok",
+            "candles": candles,
+            "instrument": instrument,
+            "granularity": granularity
+        })
         
-        # Remove any None values from capabilities
-        for model_name in api_info["models"]:
-            api_info["models"][model_name]["capabilities"] = [
-                cap for cap in api_info["models"][model_name]["capabilities"] if cap is not None
-            ]
-        
-        return jsonify(api_info)
-    
     except Exception as e:
         error_message = str(e)
-        logger.error(f"Error generating API info: {error_message}", exc_info=True)
+        logger.error(f"Error fetching candles: {error_message}", exc_info=True)
         return jsonify({
             "status": "error",
-            "error": f"Error generating API info: {error_message}"
+            "error": "An error occurred while fetching market data"
         }), 500
 
-@bp.route('/api/docs', methods=['GET'])
-def api_docs():
-    """Return API documentation in JSON format.
-    
-    This provides detailed documentation for all available endpoints,
-    including parameters, request methods, and response formats.
-    """
-    logger.info("Request for API documentation")
-    
+def _analyze_single_model(model_type):
+    logger.info(f"Received request for /analyze/{model_type}")
+    client = get_oanda_client()
+    if not client:
+        logger.error("OANDA client initialization failed. Cannot proceed with analysis.")
+        return jsonify({"status": "error", "error": "OANDA client initialization failed."}), 500
     try:
-        docs = {
-            "name": "MVPFOREX API Documentation",
-            "version": "1.0.0",
-            "base_url": request.url_root.rstrip('/'),
-            "endpoints": [
-                {
-                    "path": "/",
-                    "method": "GET",
-                    "description": "Render the main web interface",
-                    "response_format": "HTML page",
-                    "authentication_required": False
-                },
-                {
-                    "path": "/api/info",
-                    "method": "GET",
-                    "description": "Get information about the API, available models, and capabilities",
-                    "response_format": "JSON object with API details",
-                    "authentication_required": False
-                },
-                {
-                    "path": "/api/docs",
-                    "method": "GET",
-                    "description": "Get API documentation",
-                    "response_format": "JSON object with endpoint documentation",
-                    "authentication_required": False
-                },
-                {
-                    "path": "/upload-chart",
-                    "method": "POST",
-                    "description": "Upload a chart image for analysis",
-                    "parameters": {
-                        "chart": {
-                            "type": "file",
-                            "description": "The chart image file (PNG, JPG, JPEG, or GIF)"
-                        }
-                    },
-                    "response_format": "JSON object with the path to the uploaded image",
-                    "authentication_required": False
-                },
-                {
-                    "path": "/analyze",
-                    "method": "POST",
-                    "description": "Generate trading strategy analysis from all configured models",
-                    "parameters": {
-                        "instrument": {
-                            "type": "string",
-                            "description": "Trading instrument (default: XAU_USD)",
-                            "optional": True
-                        },
-                        "granularity": {
-                            "type": "string",
-                            "description": "Timeframe granularity (default: M5)",
-                            "optional": True
-                        },
-                        "count": {
-                            "type": "integer",
-                            "description": "Number of candles to fetch (default: 100)",
-                            "optional": True
-                        },
-                        "chart_image_path": {
-                            "type": "string",
-                            "description": "Path to chart image (from upload-chart endpoint)",
-                            "optional": True
-                        }
-                    },
-                    "response_format": "JSON object with analysis from all models",
-                    "authentication_required": False
-                },
-                {
-                    "path": "/analyze/{model}",
-                    "method": "POST",
-                    "description": "Generate trading strategy analysis from a specific model (gpt4, claude, perplexity, chatgpt41)",
-                    "parameters": {
-                        "instrument": {
-                            "type": "string",
-                            "description": "Trading instrument (default: XAU_USD)",
-                            "optional": True
-                        },
-                        "granularity": {
-                            "type": "string",
-                            "description": "Timeframe granularity (default: M5)",
-                            "optional": True
-                        },
-                        "count": {
-                            "type": "integer",
-                            "description": "Number of candles to fetch (default: 100)",
-                            "optional": True
-                        },
-                        "chart_image_path": {
-                            "type": "string",
-                            "description": "Path to chart image (from upload-chart endpoint)",
-                            "optional": True
-                        }
-                    },
-                    "response_format": "JSON object with analysis from the specified model",
-                    "authentication_required": False
-                },
-                {
-                    "path": "/health",
-                    "method": "GET",
-                    "description": "Health check endpoint to verify application is running",
-                    "response_format": "JSON object with status information",
-                    "authentication_required": False
-                }
-            ],
-            "response_format": {
-                "success": {
-                    "status": "success",
-                    "data": {
-                        "description": "The data object contains the results of the operation",
-                        "properties": {
-                            "trend_info": "Object containing trend direction, strength, and price information",
-                            "structure_points": "Object containing swing highs and lows",
-                            "ote_zone": "Object containing Fibonacci OTE zone information (if available)",
-                            "analysis": "String containing the analysis text from the model",
-                            "model": "String identifying the model used for analysis",
-                            "elapsed_time": "Time in seconds to generate the analysis"
-                        }
-                    }
-                },
-                "error": {
-                    "status": "error",
-                    "error": "String containing error message",
-                    "error_type": "String identifying the error type (optional)"
-                }
-            },
-            "models": [model_name for model_name in MODELS.keys()]
-        }
-        
-        return jsonify(docs)
-    
+        instrument = "XAU_USD"
+        granularity = "H1"
+        count = 100
+        market_data_result = get_latest_market_data(client, instrument, granularity, count)
+        if market_data_result.get("error"):
+            logger.error(f"Error fetching market data: {market_data_result['error']}")
+            return jsonify({"status": "error", "error": f"Failed to fetch market data: {market_data_result['error']}"}), 500
+        market_data = market_data_result["data"]
+        trend_info = market_data_result["trend_info"]
+        structure_points = market_data_result["structure_points"]
+        logger.info(f"Market data fetched successfully for {model_type}.")
+        logger.info(f"Starting AI analysis for model: {model_type}")
+        analysis_result = generate_analysis(
+            market_data=market_data,
+            trend_info=trend_info,
+            structure_points=structure_points,
+            model_type=model_type
+        )
+        return jsonify({"status": "completed", "data": analysis_result})
     except Exception as e:
         error_message = str(e)
-        logger.error(f"Error generating API documentation: {error_message}", exc_info=True)
+        logger.error(f"Error during analysis for {model_type}: {error_message}", exc_info=True)
         return jsonify({
-            "status": "error",
-            "error": f"Error generating API documentation: {error_message}"
+            "status": "error", 
+            "error": f"An internal server error occurred: {error_message}",
+            "error_type": type(e).__name__
         }), 500

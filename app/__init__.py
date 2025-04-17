@@ -5,6 +5,7 @@ import logging
 import sys
 from flask import Flask
 from flask_cors import CORS
+from flask_compress import Compress
 from dotenv import load_dotenv
 from config.settings import DEBUG, SECRET_KEY
 
@@ -36,12 +37,26 @@ def create_app(serverless=False):
                     template_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates'),
                     static_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static'))
         
-        CORS(app, supports_credentials=True)  # Enable CORS with credentials support
+        # Enable CORS
+        CORS(app, supports_credentials=True)
+        
+        # Enable compression
+        Compress(app)
         
         # Load configuration
         app.config['DEBUG'] = DEBUG
         app.config['SECRET_KEY'] = SECRET_KEY
         app.config['SERVERLESS'] = serverless
+        app.config['COMPRESS_MIMETYPES'] = [
+            'text/html',
+            'text/css',
+            'text/xml',
+            'application/json',
+            'application/javascript',
+            'application/x-javascript',
+        ]
+        app.config['COMPRESS_LEVEL'] = 6  # Higher compression level (1-9)
+        app.config['COMPRESS_MIN_SIZE'] = 500  # Only compress responses larger than 500 bytes
         
         # Disable caching for API responses in serverless mode
         if serverless:
