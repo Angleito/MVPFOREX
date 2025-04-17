@@ -2,9 +2,9 @@
 import os
 import uuid
 import logging
+import time
 from flask import Blueprint, render_template, jsonify, request, current_app
 from dotenv import load_dotenv
-from app.utils.oanda_client import OandaClient
 from app.utils.ai_client import get_multi_model_analysis
 from app.utils.market_data import get_latest_market_data
 
@@ -15,12 +15,25 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 bp = Blueprint('main', __name__)
 
-# Initialize OandaClient globally or within application context if preferred
-try:
-    oanda_client = OandaClient()
-except Exception as e:
-    logger.error(f"Failed to initialize OandaClient: {e}", exc_info=True)
-    oanda_client = None # Ensure it exists but indicates failure
+# Initialize OandaClient lazily to prevent issues in serverless environments
+oanda_client = None
+
+def get_oanda_client():
+    """Lazily initialize the OandaClient only when needed."""
+    global oanda_client
+    if oanda_client is None:
+        try:
+            # Only import when needed to reduce cold start time
+            from app.utils.oanda_client import OandaClient
+            logger.info("Initializing OandaClient...")
+            start_time = time.time()
+            oanda_client = OandaClient()
+            logger.info(f"OandaClient initialized successfully in {time.time() - start_time:.2f}s")
+        except Exception as e:
+            logger.error(f"Failed to initialize OandaClient: {str(e)}", exc_info=True)
+            # Return None instead of assigning to global variable
+            return None
+    return oanda_client
 
 # --- Routes ---
 from config.settings import MODELS
@@ -66,19 +79,21 @@ def analyze():
     """Fetch data and run analysis for all models."""
     logger.info("Received request for /analyze (all models)")
 
-    if not oanda_client:
-        logger.error("OANDA client not initialized. Cannot proceed with analysis.")
+    # Lazily initialize the OANDA client
+    client = get_oanda_client()
+    if not client:
+        logger.error("OANDA client initialization failed. Cannot proceed with analysis.")
         return jsonify({"status": "error", "error": "OANDA client initialization failed."}), 500
 
     try:
         # 1. Fetch Market Data
         logger.info("Fetching latest market data...")
-        instrument = "XAU_USD"  # Changed to XAUUSD
+        instrument = "XAU_USD"
         granularity = "H1"
         count = 100
         
         try:
-            market_data_result = get_latest_market_data(oanda_client, instrument, granularity, count)
+            market_data_result = get_latest_market_data(client, instrument, granularity, count)
             
             if market_data_result.get("error"):
                 logger.error(f"Error fetching market data: {market_data_result['error']}")
@@ -102,36 +117,27 @@ def analyze():
         model_types = list(MODELS.keys())
         logger.info(f"Will process {len(model_types)} models: {', '.join(model_types)}")
         
-        # Process one model at a time to prevent timeouts
-        for model_type in model_types:
-            try:
-                logger.info(f"Starting analysis for model: {model_type}")
+        # Due to serverless timeout constraints, only process one model
+        model_type = model_types[0] if model_types else "gpt4"
+        logger.info(f"In serverless environment - processing only one model: {model_type}")
+        
+        try:
+            logger.info(f"Starting analysis for model: {model_type}")
+            start_time = time.time()
+            
+            analysis = get_multi_model_analysis(
+                market_data=market_data,
+                trend_info=trend_info,
+                structure_points=structure_points
+            )
+            
+            # Store the results and log performance
+            analysis_results = analysis
+            logger.info(f"Analysis completed in {time.time() - start_time:.2f}s")
                 
-                # Get single model analysis
-                model_result = {}
-                
-                try:
-                    analysis = get_multi_model_analysis(
-                        market_data=market_data,
-                        trend_info=trend_info,
-                        structure_points=structure_points
-                    )
-                    
-                    # Store the results
-                    analysis_results = analysis
-                    logger.info(f"Analysis for all models completed successfully.")
-                    break  # Successfully got all models at once
-                    
-                except Exception as model_error:
-                    logger.error(f"Error in multi-model analysis: {str(model_error)}", exc_info=True)
-                    return jsonify({"status": "error", "error": f"Error analyzing models: {str(model_error)}"}), 500
-                
-            except Exception as e:
-                logger.error(f"Unexpected error processing model {model_type}: {str(e)}", exc_info=True)
-                analysis_results[model_type] = {
-                    "error": f"Analysis failed: {str(e)}",
-                    "model": MODELS.get(model_type, {}).get('id', 'unknown')
-                }
+        except Exception as e:
+            logger.error(f"Error analyzing with model {model_type}: {str(e)}", exc_info=True)
+            return jsonify({"status": "error", "error": f"Error analyzing with {model_type}: {str(e)}"}), 500
         
         # Return whatever results we have
         return jsonify({"status": "completed", "data": analysis_results})

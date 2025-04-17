@@ -2,9 +2,12 @@
   "version": 2,
   "builds": [
     {
-      "src": "run.py",
+      "src": "api/index.py",
       "use": "@vercel/python",
-      "config": { "maxLambdaSize": "50mb" }
+      "config": { 
+        "maxLambdaSize": "50mb",
+        "runtime": "python3.11"
+      }
     },
     {
       "src": "static/**",
@@ -18,7 +21,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "run.py"
+      "dest": "/api/index.py"
     }
   ],
   "env": {
