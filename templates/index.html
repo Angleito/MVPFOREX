@@ -38,6 +38,12 @@
             <div id="tradingview-chart"></div>
         </div>
         
+        <div class="row mb-4">
+            <div class="col text-center">
+                <button id="analyzeBtn" class="btn btn-primary btn-lg">Analyze Current Market</button>
+            </div>
+        </div>
+
         <div id="loading" class="loading-overlay">
             <div class="text-center">
                 <div class="spinner-border text-primary" role="status">
@@ -47,14 +53,6 @@
             </div>
         </div>
 
-        <div id="model-buttons" class="mb-4 text-center">
-            {% set model_labels = {'gpt4': 'GPT-4', 'claude': 'Claude', 'perplexity': 'Perplexity'} %}
-            {% for model in MODELS.keys() %}
-                <button class="btn btn-primary mx-2 mb-2" id="analyzeBtn_{{model}}" onclick="fetchAnalysis('{{model}}')">
-                    Analyze with {{ model_labels.get(model, model|capitalize) }}
-                </button>
-            {% endfor %}
-        </div>
         <div id="results" class="d-none">
             <!-- Results will be populated by JavaScript -->
         </div>
@@ -82,89 +80,133 @@
     </script>
 
     <script>
-    const loadingOverlay = document.getElementById('loading');
-    const resultsDiv = document.getElementById('results');
+    document.addEventListener('DOMContentLoaded', () => {
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const loadingOverlay = document.getElementById('loading');
+        const resultsDiv = document.getElementById('results');
 
-    function showLoading() {
-        loadingOverlay.style.display = 'flex';
-        resultsDiv.classList.add('d-none');
-    }
+        function showLoading() {
+            loadingOverlay.style.display = 'flex';
+            analyzeBtn.disabled = true;
+            resultsDiv.classList.add('d-none');
+        }
 
-    function hideLoading() {
-        loadingOverlay.style.display = 'none';
-    }
+        function hideLoading() {
+            loadingOverlay.style.display = 'none';
+            analyzeBtn.disabled = false;
+        }
 
-    function clearResults() {
-        resultsDiv.innerHTML = '';
-        resultsDiv.classList.add('d-none');
-    }
+        function clearResults() {
+            resultsDiv.innerHTML = '';
+            resultsDiv.classList.add('d-none');
+        }
 
-    window.fetchAnalysis = async function(model) {
-        // Disable the button for this model
-        const btn = document.getElementById(`analyzeBtn_${model}`);
-        if (btn) btn.disabled = true;
-        showLoading();
-        clearResults();
-        try {
-            const response = await fetch(`/analyze?model=${model}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            if (!response.ok) {
-                throw new Error(`Server error: ${response.status}`);
+        async function fetchAnalysis() {
+            try {
+                clearResults();
+                showLoading();
+
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.status === 'completed' && data.data) {
+                    displayResults(data.data);
+                } else if (data.status === 'error') {
+                    throw new Error(data.error || 'Analysis failed');
+                } else {
+                    throw new Error('Invalid response from server');
+                }
+            } catch (error) {
+                console.error('Error in analysis:', error);
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger" role="alert">
+                        Error in analysis: ${error.message}
+                    </div>
+                `;
+                resultsDiv.classList.remove('d-none');
+            } finally {
+                hideLoading();
             }
-            const data = await response.json();
-            if (data.status === 'completed' && data.data) {
-                window.displayResults(data.data, model);
-            } else if (data.status === 'error') {
-                throw new Error(data.error || 'Analysis failed');
+        }
+
+        function displayResults(data) {
+            resultsDiv.innerHTML = '<h2 class="text-center mb-4">Analysis Results</h2>';
+            
+            if (data && Object.keys(data).length > 0) {
+                const resultsContent = document.createElement('div');
+                resultsContent.className = 'row';
+
+                // Display each model's analysis
+                for (const [model, analysisData] of Object.entries(data)) {
+                    const card = document.createElement('div');
+                    card.className = 'col-md-4 mb-4';
+                    
+                    let cardContent;
+                    if (analysisData.error) {
+                        cardContent = `
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0">${getModelDisplayName(model)}</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text text-danger">${analysisData.error}</p>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const analysisText = analysisData.analysis || 'No analysis available';
+                        cardContent = `
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0">${getModelDisplayName(model)}</h5>
+                                    <small class="text-muted">${analysisData.model || ''}</small>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">${analysisText.replace(/\n/g, '<br>')}</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    card.innerHTML = cardContent;
+                    resultsContent.appendChild(card);
+                }
+
+                resultsDiv.appendChild(resultsContent);
             } else {
-                throw new Error('Invalid response from server');
+                resultsDiv.innerHTML += `
+                    <div class="alert alert-warning text-center" role="alert">
+                        No analysis data available
+                    </div>
+                `;
             }
-        } catch (error) {
-            resultsDiv.innerHTML = `<div class="alert alert-danger" role="alert">Error in analysis: ${error.message}</div>`;
+            
             resultsDiv.classList.remove('d-none');
-        } finally {
-            hideLoading();
-            if (btn) btn.disabled = false;
         }
-    }
 
-    window.displayResults = function(data, model) {
-        resultsDiv.innerHTML = '<h2 class="text-center mb-4">Analysis Result</h2>';
-        if (data && data[model]) {
-            const modelResult = data[model];
-            let cardContent;
-            if (modelResult.error) {
-                cardContent = `
-                    <div class="card h-100">
-                        <div class="card-header">
-                            <h5 class="card-title mb-0">${model.toUpperCase()}</h5>
-                        </div>
-                        <div class="card-body">
-                            <p class="card-text text-danger">${modelResult.error}</p>
-                        </div>
-                    </div>
-                `;
-            } else {
-                cardContent = `
-                    <div class="card h-100">
-                        <div class="card-header">
-                            <h5 class="card-title mb-0">${model.toUpperCase()}</h5>
-                            <small class="text-muted">${modelResult.model || ''}</small>
-                        </div>
-                        <div class="card-body">
-                            <p class="card-text">${(modelResult.analysis || 'No analysis available').replace(/\n/g, '<br>')}</p>
-                        </div>
-                    </div>
-                `;
-            }
-            resultsDiv.innerHTML += cardContent;
-        } else {
-            resultsDiv.innerHTML += `<div class="alert alert-warning text-center" role="alert">No analysis data available</div>`;
+        function getModelDisplayName(model) {
+            const modelDisplayNames = {
+                'gpt4': 'GPT-4.1',
+                'claude': 'Claude 3.7',
+                'perplexity': 'Perplexity Pro'
+            };
+            return modelDisplayNames[model] || model.toUpperCase();
         }
-        resultsDiv.classList.remove('d-none');
-    }
+
+        if (analyzeBtn) {
+            analyzeBtn.addEventListener('click', fetchAnalysis);
+        }
+    });
     </script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 """AI client utilities for Requesty integration."""
 import base64
 import logging
+import time
 from typing import Optional
 import openai
 from config.settings import (
@@ -17,17 +18,29 @@ logger = logging.getLogger(__name__)
 def get_ai_client():
     """Initialize and return an OpenAI client configured for Requesty."""
     if not ROUTER_API_KEY:
-        raise ValueError("ROUTER_API_KEY not found. Please check your .env file.")
+        logger.error("ROUTER_API_KEY not found in environment variables")
+        raise ValueError("ROUTER_API_KEY not found. Please check your environment variables.")
+
+    if not REQUESTY_BASE_URL:
+        logger.error("REQUESTY_BASE_URL not found in environment variables")
+        raise ValueError("REQUESTY_BASE_URL not found. Please check your environment variables.")
+
+    logger.info(f"Initializing OpenAI client with base URL: {REQUESTY_BASE_URL[:20]}...")
 
     # Initialize OpenAI client with Requesty configuration
-    client = openai.OpenAI(
-        api_key=ROUTER_API_KEY,
-        base_url=REQUESTY_BASE_URL,
-        default_headers={
-            "Authorization": f"Bearer {ROUTER_API_KEY}"
-        }
-    )
-    return client
+    try:
+        client = openai.OpenAI(
+            api_key=ROUTER_API_KEY,
+            base_url=REQUESTY_BASE_URL,
+            default_headers={
+                "Authorization": f"Bearer {ROUTER_API_KEY}"
+            },
+            timeout=60.0  # 60 second timeout for API calls
+        )
+        return client
+    except Exception as e:
+        logger.error(f"Failed to initialize OpenAI client: {str(e)}", exc_info=True)
+        raise
 
 def encode_image(image_path: str) -> str:
     """Convert an image to base64 encoding."""
@@ -50,70 +63,88 @@ def generate_analysis(
         chart_image_path: Optional path to the chart image for analysis
         model_type: Type of model to use ('gpt4', 'claude', or 'perplexity')
     """
-    client = get_ai_client()
-    model_config = MODELS.get(model_type, MODELS['gpt4'])
-    
-    # Prepare the messages
-    messages = [
-        {
-            "role": "system",
-            "content": "You are an expert trading analyst specializing in Fibonacci trading strategies for gold (XAUUSD)."
-        }
-    ]
-
-    # Prepare the content with market data
-    content = [
-        {
-            "type": "text",
-            "text": f"""
-                Analyze the following XAUUSD market data:
-                Current Price: ${trend_info['current_price']}
-                Trend Direction: {trend_info['direction']}
-                Trend Strength: {trend_info['strength']}
-                
-                Recent Structure Points:
-                Swing Highs: {[f'${h["price"]} at {h["time"]}' for h in structure_points['swing_highs']]}
-                Swing Lows: {[f'${l["price"]} at {l["time"]}' for l in structure_points['swing_lows']]}
-                
-                Please provide:
-                1. Technical Analysis of the chart
-                2. Fibonacci retracement levels and key zones
-                3. Potential trade setup with entry, stop loss, and take profit levels
-                4. Risk management recommendations
-            """
-        }
-    ]
-
-    # Add image analysis if chart is provided
-    if chart_image_path:
-        try:
-            base64_image = encode_image(chart_image_path)
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{base64_image}"
-                }
-            })
-        except Exception as e:
-            raise Exception(f"Error processing chart image: {str(e)}")
-
-    messages.append({"role": "user", "content": content})
+    logger.info(f"Generating analysis with model: {model_type}")
     
     try:
-        response = client.chat.completions.create(
-            model=model_config['id'],
-            messages=messages,
-            max_tokens=model_config['max_tokens'],
-            temperature=model_config['temperature']
-        )
+        client = get_ai_client()
+        model_config = MODELS.get(model_type, MODELS['gpt4'])
         
-        if not response.choices:
-            raise Exception("No response choices found")
+        # Prepare the messages
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert trading analyst specializing in Fibonacci trading strategies for gold (XAUUSD)."
+            }
+        ]
+
+        # Prepare the content with market data
+        content = [
+            {
+                "type": "text",
+                "text": f"""
+                    Analyze the following XAUUSD market data:
+                    Current Price: ${trend_info['current_price']}
+                    Trend Direction: {trend_info['direction']}
+                    Trend Strength: {trend_info['strength']}
+                    
+                    Recent Structure Points:
+                    Swing Highs: {[f'${h["price"]} at {h["time"]}' for h in structure_points['swing_highs']]}
+                    Swing Lows: {[f'${l["price"]} at {l["time"]}' for l in structure_points['swing_lows']]}
+                    
+                    Please provide:
+                    1. Technical Analysis of the chart
+                    2. Fibonacci retracement levels and key zones
+                    3. Potential trade setup with entry, stop loss, and take profit levels
+                    4. Risk management recommendations
+                """
+            }
+        ]
+
+        # Add image analysis if chart is provided
+        if chart_image_path:
+            try:
+                base64_image = encode_image(chart_image_path)
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_image}"
+                    }
+                })
+            except Exception as e:
+                logger.error(f"Error processing chart image: {str(e)}", exc_info=True)
+                raise Exception(f"Error processing chart image: {str(e)}")
+
+        messages.append({"role": "user", "content": content})
         
-        return response.choices[0].message.content
+        start_time = time.time()
+        logger.info(f"Sending request to {model_config['id']}...")
         
-    except openai.OpenAIError as e:
-        raise Exception(f"AI Analysis Error: {str(e)}")
+        try:
+            response = client.chat.completions.create(
+                model=model_config['id'],
+                messages=messages,
+                max_tokens=model_config['max_tokens'],
+                temperature=model_config['temperature']
+            )
+            
+            elapsed_time = time.time() - start_time
+            logger.info(f"Response received from {model_config['id']} in {elapsed_time:.2f} seconds")
+            
+            if not response.choices:
+                logger.warning(f"No response choices found from {model_config['id']}")
+                raise Exception("No response choices found")
+            
+            return response.choices[0].message.content
+            
+        except openai.OpenAIError as e:
+            logger.error(f"OpenAI API Error with {model_config['id']}: {str(e)}", exc_info=True)
+            raise Exception(f"AI Analysis Error with {model_config['id']}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error during API call to {model_config['id']}: {str(e)}", exc_info=True)
+            raise Exception(f"Unexpected error during analysis: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in generate_analysis for {model_type}: {str(e)}", exc_info=True)
+        raise
 
 def get_multi_model_analysis(
     market_data,
@@ -122,14 +153,20 @@ def get_multi_model_analysis(
     chart_image_path: Optional[str] = None
 ):
     """Generate analysis from all configured models and return results."""
+    logger.info("Starting multi-model analysis")
     results = {}
     
-    # Run analysis for all configured models
+    # Run analysis for each model with proper error handling for serverless environments
     for model_type in MODELS.keys():
+        logger.info(f"Processing model: {model_type}")
+        
         if model_type not in MODELS:  # Safety check
+            logger.warning(f"Model type {model_type} not configured")
             results[model_type] = {'error': f'Model type {model_type} not configured', 'model': 'unknown'}
             continue
+            
         try:
+            # Process one model at a time to prevent timeouts
             analysis = generate_analysis(
                 market_data,
                 trend_info,
@@ -137,6 +174,8 @@ def get_multi_model_analysis(
                 chart_image_path,
                 model_type
             )
+            
+            logger.info(f"Successfully generated analysis for {model_type}")
             results[model_type] = {
                 'analysis': analysis,
                 'model': MODELS[model_type]['id']
@@ -148,4 +187,5 @@ def get_multi_model_analysis(
                 'model': MODELS[model_type]['id']
             }
     
+    logger.info(f"Completed multi-model analysis. Results for {len(results)} models")
     return results

@@ -4,7 +4,7 @@
     {
       "src": "run.py",
       "use": "@vercel/python",
-      "config": { "maxLambdaSize": "15mb" }
+      "config": { "maxLambdaSize": "50mb" }
     },
     {
       "src": "static/**",
@@ -20,5 +20,8 @@
       "src": "/(.*)",
       "dest": "run.py"
     }
-  ]
+  ],
+  "env": {
+    "PYTHONUNBUFFERED": "1"
+  }
 }
