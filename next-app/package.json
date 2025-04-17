@@ -6,15 +6,21 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "chart.js": "^3.5.1",
     "lightweight-charts": "^5.0.5",
     "next": "14.2.4",
     "react": "18.2.0",
     "react-dom": "18.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.1",
     "eslint": "8.56.0",
     "eslint-config-next": "14.2.3"
   }

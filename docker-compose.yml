@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    volumes:
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    networks:
+      - mvpforex_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/monitoring/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./static:/usr/share/nginx/html/static
+    depends_on:
+      - web
+    networks:
+      - mvpforex_net
+
+  redis:
+    image: redis:alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - mvpforex_net
+
+volumes:
+  redis_data:
+
+networks:
+  mvpforex_net:
+    driver: bridge

@@ -1,0 +1,208 @@
+# Technical Architecture
+
+## System Components
+- **Backend (Flask)**: Core API services, market data retrieval, AI analysis
+  - OandaClient for market data
+  - AI model integration (GPT-4.1, Claude 3.7, Perplexity Pro)
+  - Supabase/PostgreSQL database for candlestick data persistence
+  - Rate limiting and validation middleware
+  - Health check endpoints
+
+- **Frontend (Next.js)**: User interface and interaction
+  - TradingView widget for real-time price charts
+  - Model selection interface (ModelButton component)
+  - API feedback display panel
+  - Error boundaries and fallback states
+  - Responsive design with mobile optimization
+
+- **Integration Layer**:
+  - REST API communication between Next.js and Flask
+  - WebSocket connection for real-time updates (to be implemented)
+  - Supabase client for direct database access from frontend (to be implemented)
+  - Unified error handling and status feedback
+
+## Data Models
+- **Candlestick**: Price data for instruments
+  - instrument (string): Trading pair identifier
+  - granularity (string): Time interval (M5, M15, M30, H1, H4, D)
+  - timestamp (datetime): Candle open time
+  - open, high, low, close (float): OHLC price data
+  - volume (float): Trading volume
+
+- **Analysis**: AI-generated market analysis
+  - model (string): AI model used
+  - instrument (string): Trading pair
+  - timestamp (datetime): Analysis creation time
+  - analysis_text (string): Generated strategy/analysis
+  - market_conditions (JSON): Market data snapshot
+
+- **Feedback**: User feedback on analyses
+  - analysis_id (string): Reference to analysis
+  - rating (int): User rating (1-5)
+  - comments (string): User comments
+  - timestamp (datetime): Feedback time
+
+## APIs and Integrations
+- **/api/analyze**: Main analysis endpoint
+  - POST: Generate analysis from specified model
+  - Params: model, instrument, granularity
+  - Returns: Analysis text, metadata
+
+- **/api/health**: System status endpoint
+  - GET: Current system operational status
+  - Returns: status, serverless flag
+
+- **/api/candles**: Market data endpoint
+  - GET: Retrieve candlestick data
+  - Params: instrument, granularity, count
+  - Returns: Array of OHLC candles
+
+- **/api/feedback**: User feedback endpoint
+  - POST: Submit feedback on analyses
+  - Params: analysis_id, rating, comments
+  - Returns: Confirmation status
+
+## Infrastructure Requirements
+- Vercel deployment for Next.js frontend
+- Vercel Serverless Functions for Flask backend
+- Supabase PostgreSQL database
+- Redis caching for production (skipped in serverless)
+- Environment variables for secure credentials management
+
+# Development Roadmap
+
+## Phase 1: Core Integration
+1. **API Connection Layer**
+   - Update Next.js API configuration to connect to Flask endpoints
+   - Implement proper error handling for API failures
+   - Add API status indicators in UI
+
+2. **Supabase Client Integration**
+   - Add Supabase client to Next.js application
+   - Implement authentication flow
+   - Create database access methods
+
+3. **UI Component Synchronization**
+   - Connect TradingView widget to backend data sources
+   - Update model selector to use available backend models
+   - Implement loading states for all API calls
+
+## Phase 2: Feature Expansion
+1. **Real-time Market Data**
+   - Implement WebSocket connection for live price updates
+   - Add real-time indicators to TradingView widget
+   - Create notification system for significant price movements
+
+2. **Enhanced Analysis Features**
+   - Add multi-timeframe analysis options
+   - Implement comparison view for different AI models
+   - Create saved analysis history section
+
+3. **User Preference & Settings**
+   - Implement theme switching (light/dark)
+   - Add customizable dashboard layouts
+   - Create user-defined default settings
+
+## Phase 3: Advanced Functionality
+1. **Backtesting System**
+   - Create historical analysis runner
+   - Implement performance metrics calculation
+   - Add visualization for backtesting results
+
+2. **Alerts & Notifications**
+   - Implement price alert system
+   - Add email/push notification support
+   - Create custom alert conditions builder
+
+3. **Social & Sharing Features**
+   - Add sharing functionality for analyses
+   - Implement community rating system
+   - Create public/private sharing controls
+
+# Logical Dependency Chain
+
+## Foundation Layer (Start Here)
+1. **API Connectivity**
+   - Next.js environment configuration
+   - API request/response handling utilities
+   - Error handling and retry mechanisms
+
+2. **Data Access Layer**
+   - Supabase client implementation
+   - Data models and type definitions
+   - API response parsers and formatters
+
+## Intermediate Layer
+1. **UI Component Updates**
+   - Connect TradingView widget to backend data
+   - Update model selection interface
+   - Implement status indicators
+
+2. **Real-time Data Handling**
+   - Add WebSocket connection
+   - Implement real-time data processing
+   - Create dynamic UI updaters
+
+## Advanced Features
+1. **User Experience Enhancements**
+   - Theme switching and preferences
+   - Layout customization
+   - Mobile responsiveness improvements
+
+2. **Analysis Extensions**
+   - Advanced filtering and comparison tools
+   - Historical performance tracking
+   - Export functionality
+
+# Risks and Mitigations
+
+## Technical Challenges
+- **Risk**: API latency in serverless environment
+  - **Mitigation**: Implement efficient caching strategies and loading states
+  - **Fallback**: Graceful UI degradation with helpful error messages
+
+- **Risk**: WebSocket limitations in serverless
+  - **Mitigation**: Use API polling as fallback
+  - **Fallback**: Implement manual refresh option
+
+- **Risk**: Database connection issues
+  - **Mitigation**: Robust connection retry logic
+  - **Fallback**: Local storage for critical data
+
+## MVP Scoping
+- **Risk**: Feature creep extending timeline
+  - **Mitigation**: Strict prioritization based on user value
+  - **Fallback**: Phased release approach with clear feature boundaries
+
+- **Risk**: UI complexity slowing development
+  - **Mitigation**: Use component library for faster implementation
+  - **Fallback**: Simplify UI for first release, enhance later
+
+## Testing Strategy
+- Implement Playwright test suite covering:
+  - Core navigation flows
+  - API integration points
+  - Error handling scenarios
+  - Responsive design validation
+  - Authentication flows
+
+# Appendix
+
+## Testing Framework
+- **Playwright Tests**: End-to-end testing of complete user journeys
+  - Account creation and login
+  - Analysis generation with each model
+  - Chart interaction and data visualization
+  - Error recovery scenarios
+
+## Performance Metrics
+- Time to interactive: < 2 seconds
+- API response time: < 500ms
+- Analysis generation time: < 5 seconds
+- Chart rendering time: < 1 second
+
+## Accessibility Requirements
+- WCAG 2.1 AA compliance
+- Keyboard navigation support
+- Screen reader compatibility
+- Minimum contrast ratios

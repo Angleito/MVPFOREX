@@ -97,13 +97,54 @@ export function setCookie(name, value, days = 7) {
  * Detect if storage is available in the current environment
  */
 export function isStorageAvailable() {
-  return typeof window !== 'undefined' && (() => {
-    try {
-      localStorage.setItem('__storage_test__', 'test');
-      localStorage.removeItem('__storage_test__');
-      return true;
-    } catch (e) {
-      return false;
-    }
-  })();
+  try {
+    const test = '__storage_test__';
+    localStorage.setItem(test, test);
+    localStorage.removeItem(test);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+export function getStorageItem(key, defaultValue = null) {
+  if (!isStorageAvailable()) {
+    return defaultValue;
+  }
+  
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : defaultValue;
+  } catch (e) {
+    console.warn(`Error reading ${key} from storage:`, e);
+    return defaultValue;
+  }
+}
+
+export function setStorageItem(key, value) {
+  if (!isStorageAvailable()) {
+    return false;
+  }
+  
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (e) {
+    console.warn(`Error writing ${key} to storage:`, e);
+    return false;
+  }
+}
+
+export function removeStorageItem(key) {
+  if (!isStorageAvailable()) {
+    return false;
+  }
+  
+  try {
+    localStorage.removeItem(key);
+    return true;
+  } catch (e) {
+    console.warn(`Error removing ${key} from storage:`, e);
+    return false;
+  }
 }

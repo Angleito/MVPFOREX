@@ -38,7 +38,7 @@ def create_app(serverless=False):
                     static_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static'))
         
         # Enable CORS
-        CORS(app, supports_credentials=True)
+        CORS(app, supports_credentials=True, origins=["*"], methods=["GET", "POST", "OPTIONS", "PATCH", "DELETE", "PUT"], allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-CSRF-Token", "Accept", "Accept-Version", "Content-Length", "Content-MD5", "Date", "X-Api-Version"])
         
         # Enable compression
         Compress(app)

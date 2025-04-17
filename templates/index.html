@@ -167,6 +167,53 @@
             </div>
         </div>
 
+        <div class="row">
+            <!-- Metrics Dashboard -->
+            <div class="col-lg-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Model Performance Metrics</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="metric-card">
+                                    <h6>Pattern Recognition</h6>
+                                    <div id="patternRecognitionChart"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="metric-card">
+                                    <h6>NLP Metrics</h6>
+                                    <div id="nlpMetricsChart"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="metric-card">
+                                    <h6>Response Times</h6>
+                                    <div id="latencyChart"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-md-6">
+                                <div class="metric-card">
+                                    <h6>Backtest Performance</h6>
+                                    <div id="backtestChart"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="metric-card">
+                                    <h6>User Feedback Analysis</h6>
+                                    <div id="feedbackChart"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div id="loading" class="loading-overlay">
             <div class="text-center">
                 <div class="spinner-border text-primary" role="status">
@@ -185,8 +232,10 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <script src="/static/js/chart_handler.js"></script>
     <script src="/static/js/analysis_handler.js"></script>
     <script src="/static/js/feedback_handler.js"></script>
+    <script src="/static/js/metrics_dashboard.js"></script>
 </body>
 </html>
