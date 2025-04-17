@@ -501,39 +501,6 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingAnalysis = false;
     }
 }
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-            }
-            
-            if (!response.ok) {
-                throw new Error(`API returned ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data && data.analysis) {
-                // Display analysis result
-                analysisContent.textContent = data.analysis;
-            } else if (data && data.text) {
-                // Alternative response format
-                analysisContent.textContent = data.text;
-            } else {
-                // Fallback for simulation mode
-                analysisContent.textContent = generateSimulatedAnalysis(model, lastPriceData);
-            }
-        } catch (error) {
-            console.error(`Error generating ${model} analysis:`, error);
-            
-            // Provide fallback analysis in case of error
-            analysisContent.textContent = generateSimulatedAnalysis(model, lastPriceData || { currentPrice: simulatedPrice });
-        } finally {
-            // Clear loading state
-            loadingAnalysis = false;
-        }
-    }
 
     function generateSimulatedAnalysis(model, data) {
         const price = data.currentPrice || 2400;
