@@ -18,10 +18,8 @@ def get_api_key(service_name):
         str: API key for the specified service or None if not found
     """
     key_mapping = {
-        'openai': 'OPENAI_API_KEY',
-        'anthropic': 'ANTHROPIC_API_KEY',
         'oanda': 'OANDA_API_KEY',
-        'perplexity': 'PERPLEXITY_API_KEY',  # If you have this service
+        # All LLMs (openai, anthropic, perplexity) must use the router key (ROUTER_API_KEY) via the router endpoint.
     }
     
     env_var_name = key_mapping.get(service_name.lower())

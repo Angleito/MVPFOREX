@@ -21,39 +21,18 @@ PERPLEXITY_MODEL = MODELS['perplexity']['id']
 PERPLEXITY_MAX_TOKENS = MODELS['perplexity']['max_tokens']
 PERPLEXITY_TEMPERATURE = MODELS['perplexity']['temperature']
 
-def get_api_key(provider: str) -> Optional[str]:
-    """Get API key for the specified provider from environment variables."""
-    env_vars = {
-        'perplexity': ['PERPLEXITY_API_KEY', 'ROUTER_API_KEY'],
-    }
-    
-    for env_var in env_vars.get(provider.lower(), []):
-        api_key = os.environ.get(env_var)
-        if api_key:
-            return api_key
-    
-    return None
 
 def initialize_perplexity_client() -> openai.OpenAI:
-    """Initialize and return a Perplexity client using the OpenAI SDK.
-    
-    Returns:
-        OpenAI client configured for Perplexity
-        
-    Raises:
-        ValueError: If the Perplexity API key is missing
-    """
-    api_key = get_api_key('perplexity')
-    if not api_key:
-        raise ValueError("Perplexity API key not found in environment variables")
-    
-    # Perplexity API uses the OpenAI client with a custom base URL
-    client = openai.OpenAI(
-        api_key=api_key,
-        base_url="https://api.perplexity.ai"
+    """Initialize and return a Perplexity client using the Requesty router if configured."""
+    from config.settings import ROUTER_API_KEY, REQUESTY_BASE_URL
+    if not ROUTER_API_KEY or not REQUESTY_BASE_URL:
+        raise ValueError("ROUTER_API_KEY and REQUESTY_BASE_URL are required for router-based LLM access.")
+    return openai.OpenAI(
+        api_key=ROUTER_API_KEY,
+        base_url=REQUESTY_BASE_URL,
+        default_headers={"Authorization": f"Bearer {ROUTER_API_KEY}"},
+        timeout=60.0
     )
-    
-    return client
 
 def construct_perplexity_strategy_prompt(
     trend_info: Dict[str, Any], 
@@ -113,7 +92,7 @@ Swing Lows: {', '.join(formatted_swing_lows)}
         take_profit1 = ote_zone.get('take_profit1', 0)
         take_profit2 = ote_zone.get('take_profit2', 0)
         ote_zone_range = ote_zone.get('ote_zone', {})
-        ote_start = ote_zone_range.get('start', 0)
+        ote_start = ote_zone_range.get('start', 0) if ote_zone_range is not None else 0
         ote_end = ote_zone_range.get('end', 0)
         
         prompt += f"""
@@ -160,6 +139,12 @@ def generate_strategy_analysis_perplexity(
     ote_zone: Optional[Dict[str, Any]] = None,
     chart_image_path: Optional[str] = None
 ) -> Dict[str, Any]:
+    # --- DEBUG LOGGING ---
+    logger.info(f"[DEBUG] trend_info: {trend_info}")
+    logger.info(f"[DEBUG] structure_points: {structure_points}")
+    logger.info(f"[DEBUG] ote_zone: {ote_zone}")
+    logger.info(f"[DEBUG] chart_image_path: {chart_image_path}")
+    # --- END DEBUG LOGGING ---
     """Generate trading strategy analysis using Perplexity Vision.
     
     Args:

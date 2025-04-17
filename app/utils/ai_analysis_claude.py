@@ -11,32 +11,24 @@ import json
 from anthropic import Anthropic
 
 from config.settings import ANTHROPIC_MODEL, ANTHROPIC_API_TEMPERATURE
-from app.utils.data_processing import format_structure_points
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_api_key(provider: str) -> Optional[str]:
-    """Get API key for the specified provider from environment variables."""
-    env_vars = {
-        'anthropic': ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'],
-    }
-    
-    for env_var in env_vars.get(provider.lower(), []):
-        api_key = os.environ.get(env_var)
-        if api_key:
-            return api_key
-    
-    return None
 
 def initialize_anthropic_client() -> Anthropic:
-    """Initialize and return an Anthropic client."""
-    api_key = get_api_key('anthropic')
-    if not api_key:
-        raise ValueError("Anthropic API key not found in environment variables")
-    
-    return Anthropic(api_key=api_key)
+    """Initialize and return an Anthropic client using the Requesty router if configured."""
+    from config.settings import ROUTER_API_KEY, REQUESTY_BASE_URL
+    if not ROUTER_API_KEY or not REQUESTY_BASE_URL:
+        raise ValueError("ROUTER_API_KEY and REQUESTY_BASE_URL are required for router-based LLM access.")
+    return Anthropic(
+        api_key=ROUTER_API_KEY,
+        base_url=REQUESTY_BASE_URL,
+        default_headers={"Authorization": f"Bearer {ROUTER_API_KEY}"},
+        timeout=60.0
+    )
 
 def construct_claude_strategy_prompt(
     trend_info: Dict[str, Any], 
@@ -61,8 +53,8 @@ def construct_claude_strategy_prompt(
     sma50 = trend_info.get('sma50', 0)
     
     # Format structure points
-    formatted_swing_highs = format_structure_points(structure_points.get('swing_highs', []))
-    formatted_swing_lows = format_structure_points(structure_points.get('swing_lows', []))
+    formatted_swing_highs = structure_points.get('swing_highs', [])
+    formatted_swing_lows = structure_points.get('swing_lows', [])
     
     # Build the prompt
     prompt = f"""

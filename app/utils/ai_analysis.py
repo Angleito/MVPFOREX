@@ -17,20 +17,18 @@ logger = logging.getLogger(__name__)
 
 def initialize_openai_client() -> OpenAI:
     """
-    Initialize and return an OpenAI client with the API key.
-    
-    Returns:
-        OpenAI client instance
-        
-    Raises:
-        ValueError: If the OpenAI API key is missing
+    Initialize and return an OpenAI client using the Requesty router (ROUTER_API_KEY and REQUESTY_BASE_URL).
     """
-    api_key = get_api_key('openai')
-    if not api_key:
-        logger.error("Missing OpenAI API key")
-        raise ValueError("OpenAI API key is missing. Please set OPENAI_API_KEY in your environment variables.")
-    
-    return OpenAI(api_key=api_key)
+    from config.settings import ROUTER_API_KEY, REQUESTY_BASE_URL
+    if not ROUTER_API_KEY or not REQUESTY_BASE_URL:
+        logger.error("Missing ROUTER_API_KEY or REQUESTY_BASE_URL")
+        raise ValueError("ROUTER_API_KEY and REQUESTY_BASE_URL are required for router-based LLM access.")
+    return OpenAI(
+        api_key=ROUTER_API_KEY,
+        base_url=REQUESTY_BASE_URL,
+        default_headers={"Authorization": f"Bearer {ROUTER_API_KEY}"},
+        timeout=60.0
+    )
 
 def construct_strategy_prompt(
     trend_info: Dict[str, Any], 
