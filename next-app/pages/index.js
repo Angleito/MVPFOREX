@@ -265,7 +265,6 @@ export default function Home() {
     checkApi();
     fetchMarketData();
   }, []);
-  
   // Update market data from WebSocket stream
   useEffect(() => {
     if (wsMarketData) {
