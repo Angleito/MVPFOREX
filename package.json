@@ -1,11 +1,14 @@
 {
   "name": "mvpforex",
   "version": "1.0.0",
-  "description": "mvp for forex for client",
+  "description": "XAUUSD Trading Dashboard with AI Analysis",
   "author": "john pork",
   "type": "module",
+  "private": true,
   "scripts": {
-    "dev": "node scripts/dev.js",
+    "dev": "cd next-app && npm run dev",
+    "build": "cd next-app && npm run build",
+    "start": "cd next-app && npm run start",
     "list": "node scripts/dev.js list",
     "generate": "node scripts/dev.js generate",
     "parse-prd": "node scripts/dev.js parse-prd"
@@ -30,5 +33,8 @@
     "openai": "^4.89.0",
     "ora": "^8.2.0",
     "redis": "^4.7.0"
+  },
+  "engines": {
+    "node": ">=18.17.0"
   }
 }
