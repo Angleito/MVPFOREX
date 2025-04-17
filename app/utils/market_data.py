@@ -141,6 +141,29 @@ def get_latest_market_data(
             # 2. If DB doesn't have enough data, use fetch_oanda_data
             logger.info(f"Insufficient data in DB, using fetch_oanda_data()")
             market_data = fetch_oanda_data(timeframe, count)
+
+            # Save new candles to DB
+            try:
+                from app.models import Candlestick
+                from app.utils.candles_db import save_candles_to_db
+                candles_to_save = []
+                for _, row in market_data.iterrows():
+                    c = Candlestick(
+                        instrument=instrument,
+                        granularity=timeframe,
+                        timestamp=row['time'].to_pydatetime() if hasattr(row['time'], 'to_pydatetime') else row['time'],
+                        open=row['open'],
+                        high=row['high'],
+                        low=row['low'],
+                        close=row['close'],
+                        volume=row['volume']
+                    )
+                    candles_to_save.append(c)
+                if candles_to_save:
+                    save_candles_to_db(session, candles_to_save)
+                    logger.info(f"Saved {len(candles_to_save)} new candles to DB for {instrument} {timeframe}")
+            except Exception as db_exc:
+                logger.error(f"Failed to save fetched OANDA candles to DB: {db_exc}")
         
         # Use the new market structure analysis functions
         try:
