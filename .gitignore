@@ -79,4 +79,6 @@ instance/
 .pytest_cache/
 .DS_Store
 .cursor/
-.vercel
+
+# Keep the .vercel directory but ignore output
+.vercel/output
