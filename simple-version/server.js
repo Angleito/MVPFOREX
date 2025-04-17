@@ -133,15 +133,78 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.post('/api/analyze/:model', express.json(), (req, res) => {
+const fetch = require('node-fetch');
+app.post('/api/analyze/:model', express.json(), async (req, res) => {
   const model = req.params.model;
   const marketData = req.body.market_data || {};
-  
-  // Generate simulated analysis
-  const analysis = generateSimulatedAnalysis(model, marketData);
-  
+  const price = marketData.currentPrice || 2400;
+  const trend = marketData.trend || 'Neutral';
+  const rsi = marketData.rsi || 50;
+
+  let analysis = '';
+  let usedApi = false;
+
+  try {
+    // Requesty router config from .env
+    const ROUTER_API_KEY = process.env.ROUTER_API_KEY;
+    const ROUTER_BASE_URL = process.env.ROUTER_BASE_URL || 'https://router.requesty.ai/v1';
+    const ROUTER_MAX_TOKENS = parseInt(process.env.ROUTER_MAX_TOKENS, 10) || 400;
+    const ROUTER_TEMPERATURE = parseFloat(process.env.ROUTER_TEMPERATURE) || 0.7;
+    const ROUTER_DEFAULT_MODEL = process.env.ROUTER_DEFAULT_MODEL || 'openai/gpt-4o';
+    if (!ROUTER_API_KEY) throw new Error('Router API key missing');
+
+    // Map frontend model param to router model name
+    const MODEL_MAP = {
+      gpt4: 'openai/gpt-4o',
+      openai: 'openai/gpt-4o',
+      claude: 'anthropic/claude-3-opus-20240229',
+      anthropic: 'anthropic/claude-3-opus-20240229',
+      perplexity: 'perplexity/sonar-medium-online'
+    };
+
+    const routerModel = MODEL_MAP[model] || ROUTER_DEFAULT_MODEL;
+    const routerEndpoint = `${ROUTER_BASE_URL.replace(/\/$/, '')}/chat/completions`;
+    const prompt = `Provide a real-time technical and macro analysis for XAUUSD (Gold) given:\nPrice: $${price}\nTrend: ${trend}\nRSI: ${rsi}. Be extremely detailed, provide multi-paragraph insights, cover technical, macro, and actionable trading strategy context, and explain reasoning throughout. Your answer should be verbose and comprehensive, suitable for a professional trader seeking in-depth guidance.`;
+    const payload = {
+      model: routerModel,
+      messages: [
+        { role: 'system', content: 'You are an expert gold trading analyst.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: ROUTER_MAX_TOKENS,
+      temperature: ROUTER_TEMPERATURE
+    };
+    // Log key, endpoint, and model for debugging (mask API key)
+    const maskedKey = ROUTER_API_KEY.slice(0, 8) + '...' + ROUTER_API_KEY.slice(-6);
+    console.log('[Requesty Router] Endpoint:', routerEndpoint);
+    console.log('[Requesty Router] Model:', routerModel);
+    console.log('[Requesty Router] Authorization:', `Bearer ${maskedKey}`);
+    const routerResp = await fetch(routerEndpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${ROUTER_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    const routerJson = await routerResp.json();
+    if (routerJson.choices && routerJson.choices[0] && routerJson.choices[0].message) {
+      analysis = routerJson.choices[0].message.content;
+      usedApi = true;
+    } else {
+      throw new Error('Router API error');
+    }
+  } catch (err) {
+    console.error('AI API error:', err);
+  }
+
+  // Fallback to simulated if API failed
+  if (!analysis) {
+    analysis = generateSimulatedAnalysis(model, marketData);
+  }
+
   res.json({
-    status: 'success',
+    status: usedApi ? 'success' : 'fallback',
     analysis: analysis
   });
 });

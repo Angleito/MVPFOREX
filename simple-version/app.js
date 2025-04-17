@@ -455,88 +455,52 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function generateAnalysis(model) {
-        // Don't proceed if already loading
-        if (loadingAnalysis) return;
-        
-        // Set loading state
-        loadingAnalysis = true;
-        analysisContent.textContent = 'Generating analysis...';
-        
-        try {
-            // Use simulated analysis for now since we're encountering server issues
-            console.log(`Generating ${model} analysis locally...`);
-            
-            // Use current data or fallback
-            const currentData = lastPriceData || {
-                currentPrice: 2400.00,
-                trend: 'Neutral',
-                rsi: 50
-            };
-            
-            // Generate simulated analysis directly on the client side
-            const analysisText = generateSimulatedAnalysis(model, currentData);
-            analysisContent.textContent = analysisText;
-            
-            return;
-            
-            /* Commented out server-side analysis due to connection issues
-            // Need market data to generate analysis
-            if (!lastPriceData) {
-                throw new Error('No market data available for analysis');
-            }
-            
-            console.log(`Generating ${model} analysis...`);
-            
-            // Prepare market data payload for analysis
-            const payload = {
-                market_data: {
-                    price: lastPriceData.currentPrice,
-                    bid: lastPriceData.bid,
-                    ask: lastPriceData.ask,
-                    trend: lastPriceData.trend,
-                    rsi: lastPriceData.rsi,
-                    supports: lastPriceData.supports,
-                    resistances: lastPriceData.resistances,
-                    ma_50: lastPriceData.ma50,
-                    ma_200: lastPriceData.ma200,
-                    instrument: 'XAU_USD'
-                }
-            };
-            
-            // Try primary API endpoint
-            let apiUrl = API_URL;
-            let analysisEndpoint = '';
-            
-            // Map model to appropriate endpoint
-            switch (model) {
-                case 'gpt4':
-                    analysisEndpoint = '/api/analyze/openai';
-                    break;
-                case 'claude':
-                    analysisEndpoint = '/api/analyze/anthropic';
-                    break;
-                case 'perplexity':
-                    analysisEndpoint = '/api/analyze/perplexity';
-                    break;
-                default:
-                    throw new Error('Unknown model type');
-            }
-            
-            // Call API for analysis
-            let response = await fetch(`${apiUrl}${analysisEndpoint}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            }).catch(() => null);
-            */
-            
-            // Try fallback URL if primary fails
-            if (!response || !response.ok) {
-                apiUrl = FALLBACK_API_URL;
-                response = await fetch(`${apiUrl}${analysisEndpoint}`, {
-                    method: 'POST',
+    // Don't proceed if already loading
+    if (loadingAnalysis) return;
+
+    // Set loading state
+    loadingAnalysis = true;
+    analysisContent.textContent = 'Generating analysis...';
+
+    try {
+        // Use current data or fallback
+        const currentData = lastPriceData || {
+            currentPrice: 2400.00,
+            trend: 'Neutral',
+            rsi: 50
+        };
+        const loadingStart = Date.now();
+        // Call backend API for real-time analysis
+        const response = await fetch(`${API_URL}/api/analyze/${model}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ market_data: currentData })
+        });
+        const data = await response.json();
+        // Ensure loading message is shown for at least 1 second
+        const elapsed = Date.now() - loadingStart;
+        const minDelay = 1000;
+        if (elapsed < minDelay) {
+            await new Promise(resolve => setTimeout(resolve, minDelay - elapsed));
+        }
+        if (data && data.status === 'success' && data.analysis) {
+            analysisContent.textContent = data.analysis;
+        } else if (data && data.analysis) {
+            // Show fallback/simulated if backend returns fallback
+            analysisContent.textContent = data.analysis;
+        } else {
+            analysisContent.textContent = 'Unable to generate analysis.';
+        }
+    } catch (error) {
+        console.error(`Error generating ${model} analysis:`, error);
+        analysisContent.textContent = 'Unable to generate analysis.';
+    } finally {
+        // Clear loading state
+        loadingAnalysis = false;
+    }
+}
                     headers: {
                         'Content-Type': 'application/json'
                     },
