@@ -47,4 +47,4 @@ ENV PORT 8000
 
 # --- ORIGINAL CMD ---
 # Run the application using Gunicorn when the container launches
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "1", "run:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "run:app"]

@@ -309,17 +309,77 @@ def get_multi_model_analysis(
             logger.warning(f"Model type {model_type} not configured")
             results[model_type] = {'error': f'Model type {model_type} not configured', 'model': 'unknown'}
             continue
-            
+        
         try:
             # Process one model at a time to prevent timeouts
-            analysis = generate_analysis(
-                market_data,
-                trend_info,
-                structure_points,
-                chart_image_path,
-                model_type
-            )
+            if model_type == 'gpt4':
+                # Use the OpenAI module
+                from app.utils.ai_analysis import generate_strategy_analysis
+                
+                # Calculate OTE zone
+                ote_zone = None
+                try:
+                    from app.utils.market_analysis import calculate_ote_zone
+                    ote_zone = calculate_ote_zone(trend_info.get('direction', ''), structure_points)
+                except Exception as e:
+                    logger.warning(f"Could not calculate OTE zone: {str(e)}")
+                
+                analysis = generate_strategy_analysis(
+                    trend_info=trend_info,
+                    structure_points=structure_points,
+                    ote_zone=ote_zone,
+                    chart_image_path=chart_image_path
+                )
+                
+            elif model_type == 'claude':
+                # Use the Claude module
+                from app.utils.ai_analysis_claude import generate_strategy_analysis_claude
+                
+                # Calculate OTE zone
+                ote_zone = None
+                try:
+                    from app.utils.market_analysis import calculate_ote_zone
+                    ote_zone = calculate_ote_zone(trend_info.get('direction', ''), structure_points)
+                except Exception as e:
+                    logger.warning(f"Could not calculate OTE zone: {str(e)}")
+                
+                analysis = generate_strategy_analysis_claude(
+                    trend_info=trend_info,
+                    structure_points=structure_points,
+                    ote_zone=ote_zone,
+                    chart_image_path=chart_image_path
+                )
+                
+            elif model_type == 'perplexity':
+                # Use the Perplexity module
+                from app.utils.ai_analysis_perplexity import generate_strategy_analysis_perplexity
+                
+                # Calculate OTE zone
+                ote_zone = None
+                try:
+                    from app.utils.market_analysis import calculate_ote_zone
+                    ote_zone = calculate_ote_zone(trend_info.get('direction', ''), structure_points)
+                except Exception as e:
+                    logger.warning(f"Could not calculate OTE zone: {str(e)}")
+                
+                analysis = generate_strategy_analysis_perplexity(
+                    trend_info=trend_info,
+                    structure_points=structure_points,
+                    ote_zone=ote_zone,
+                    chart_image_path=chart_image_path
+                )
+            else:
+                # Fallback to generic implementation
+                analysis = generate_analysis(
+                    market_data=market_data,
+                    trend_info=trend_info,
+                    structure_points=structure_points,
+                    chart_image_path=chart_image_path,
+                    model_type=model_type
+                )
+            
             logger.info(f"Successfully generated analysis for {model_type}")
+            
             # Always return a string for 'analysis' (not a dict)
             if isinstance(analysis, dict) and 'analysis' in analysis:
                 results[model_type] = {
