@@ -35,6 +35,7 @@ __pycache__/
 *.so
 .Python
 build/
+dist/
 develop-eggs/
 dist/
 downloads/
@@ -52,6 +53,7 @@ wheels/
 
 # Virtual Environment
 venv/
+venv-py311/
 ENV/
 env/
 
@@ -78,6 +80,13 @@ htmlcov/
 instance/
 .pytest_cache/
 .DS_Store
+logs/
+uploads/
+scripts/fixing.md
+MCP/
+taskmaster-ai-server/
+*.pyc
+*.pyo
 .cursor/
 
 # Keep the .vercel directory but ignore output

@@ -1,0 +1,4 @@
+# Only deploy simple-version and platform hooks
+/*
+!simple-version/
+!.platform/
