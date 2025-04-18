@@ -11,11 +11,13 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_DB_URL")
+# Try to get SUPABASE_DB_URL from both os.getenv and os.environ (covers all sources)
+SUPABASE_URL = os.getenv("SUPABASE_DB_URL") or os.environ.get("SUPABASE_DB_URL")
 
 if not SUPABASE_URL:
-    logger.error("SUPABASE_DB_URL environment variable not set. Please add your Supabase Postgres connection string to .env.")
-    raise RuntimeError("SUPABASE_DB_URL environment variable not set. Please add your Supabase Postgres connection string to .env.")
+    # Log all environment variables for debugging
+    logger.error("SUPABASE_DB_URL environment variable not set. Available environment variables: %s", dict(os.environ))
+    raise RuntimeError("SUPABASE_DB_URL environment variable not set. Please add your Supabase Postgres connection string to .env or ensure it is passed from the deployment environment.")
 
 # Mask the URL for logs (show protocol and host only)
 def mask_url(url):
